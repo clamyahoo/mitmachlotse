@@ -1,0 +1,25 @@
+app-id: de.gymnasium-sasbach.Projekttage
+runtime: org.kde.Platform
+runtime-version: '6.6'
+sdk: org.kde.Sdk
+command: projekttage
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --filesystem=home
+modules:
+  - name: python3-deps
+    buildsystem: simple
+    build-commands:
+      - pip3 install --prefix=/app openpyxl odfpy
+  - name: projekttage
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 -t /app/lib/projekttage/ *.py _mcmf.py _zuteilungsplaner.py
+      - echo '#!/bin/bash' > /app/bin/projekttage
+      - echo 'exec python3 /app/lib/projekttage/mitmachlotse.py "$@"' >> /app/bin/projekttage
+      - chmod +x /app/bin/projekttage
+    sources:
+      - type: dir
+        path: ../..

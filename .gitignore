@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.plf
+*.db
+build_scripts/dist/
+build_scripts/build/
+*.spec.bak
+.DS_Store
