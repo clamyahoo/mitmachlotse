@@ -1003,6 +1003,22 @@ class MainWindow(QMainWindow):
 
         m_hilfe.addSeparator()
 
+        m_beispiel = m_hilfe.addMenu("Beispieldaten ausprobieren")
+
+        a_bsp_mappe = QAction(
+            "Beispiel-Planungsmappe öffnen (ausgefüllt, bereit zum Zuteilen)", self
+        )
+        a_bsp_mappe.triggered.connect(self._oeffne_beispiel_planungsmappe)
+        m_beispiel.addAction(a_bsp_mappe)
+
+        a_bsp_import = QAction(
+            "Beispiel-Importdateien speichern (zum Ausprobieren des Imports)", self
+        )
+        a_bsp_import.triggered.connect(self._speichere_beispiel_importdateien)
+        m_beispiel.addAction(a_bsp_import)
+
+        m_hilfe.addSeparator()
+
         a_ueber = QAction("Über Mitmach-Lotse", self)
         a_ueber.triggered.connect(self._zeige_ueber)
         m_hilfe.addAction(a_ueber)
@@ -1154,6 +1170,78 @@ class MainWindow(QMainWindow):
         self._tabellen_assistent_fenster.show()
         self._tabellen_assistent_fenster.raise_()
         self._tabellen_assistent_fenster.activateWindow()
+
+    # ── Beispieldaten (Hilfe-Menü) ───────────────────────────────────────────
+
+    BEISPIEL_ORDNER = Path(__file__).parent / "beispieldaten"
+
+    def _oeffne_beispiel_planungsmappe(self):
+        """Hilfe → Beispieldaten ausprobieren → Beispiel-Planungsmappe öffnen."""
+        quelle = self.BEISPIEL_ORDNER / "planungsmappe_beispiel.plf"
+        if not quelle.exists():
+            QMessageBox.warning(self, "Beispieldaten", "Beispieldatei wurde nicht gefunden.")
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Beispiel-Planungsmappe speichern unter",
+            "beispiel_planungsmappe.plf",
+            f"{self.PMAPPE_FILTER};;{self.PMAPPE_ALT}"
+        )
+        if not path:
+            return
+        if Path(path).suffix.lower() not in (self.PMAPPE_ENDUNG, ".db"):
+            path += self.PMAPPE_ENDUNG
+        import shutil
+        shutil.copy2(str(quelle), path)
+
+        db.DB_PATH = Path(path)
+        db.init_db()
+        self._refresh_all()
+        self._sync_labels()
+        self._update_search_placeholder()
+        self._update_title()
+
+        konfig = db.get_feldkonfig()
+        projekt_pl = db.pluralisiere_label(konfig.get("projekt_label", "Option"))
+        n_tn = len(db.get_all_teilnehmer())
+        n_pr = len(db.get_all_projekte())
+        QMessageBox.information(
+            self, "Beispiel-Planungsmappe geöffnet",
+            f"Eine Beispiel-Planungsmappe mit {n_tn} Teilnehmer/innen und "
+            f"{n_pr} {projekt_pl} wurde geladen – bereits mit Wünschen befüllt, "
+            f"aber noch ohne Zuteilung.\n\n"
+            "Zum Ausprobieren z. B.:\n"
+            "• Einteilung → Automatisch zuweisen (Algorithmus A/B/C)\n"
+            "• Auswertung/Export → Wunschstatistik und Listen ansehen\n\n"
+            "Ihre bisherige Planungsmappe bleibt davon unberührt auf der Festplatte erhalten."
+        )
+
+    def _speichere_beispiel_importdateien(self):
+        """Hilfe → Beispieldaten ausprobieren → Beispiel-Importdateien speichern."""
+        dateien = [
+            self.BEISPIEL_ORDNER / "teilnehmerliste_beispiel.xlsx",
+            self.BEISPIEL_ORDNER / "projektvorschlagsliste_beispiel.ods",
+        ]
+        if not all(d.exists() for d in dateien):
+            QMessageBox.warning(self, "Beispieldaten", "Beispieldateien wurden nicht gefunden.")
+            return
+        ziel_ordner = QFileDialog.getExistingDirectory(
+            self, "Ordner für Beispiel-Importdateien wählen"
+        )
+        if not ziel_ordner:
+            return
+        import shutil
+        for d in dateien:
+            shutil.copy2(str(d), str(Path(ziel_ordner) / d.name))
+        QMessageBox.information(
+            self, "Beispiel-Importdateien gespeichert",
+            f"Gespeichert nach:\n{ziel_ordner}\n\n"
+            f"• {dateien[0].name} – Teilnehmer/innen mit Wünschen, zum Ausprobieren von "
+            f"\"Importieren → Teilnehmer/innen importieren\" (Strg+I)\n"
+            f"• {dateien[1].name} – Optionsliste, zum Ausprobieren von "
+            f"\"Importieren → Optionen / Angebote importieren\" (Strg+Shift+I)\n\n"
+            "Beide Dateien lassen sich auch mit Excel oder LibreOffice öffnen "
+            "und bearbeiten, bevor sie importiert werden."
+        )
 
     # ── Kontextabhängige Shortcut-Aktionen ───────────────────────────────────
 

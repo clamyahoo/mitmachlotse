@@ -17,6 +17,7 @@ modules:
     buildsystem: simple
     build-commands:
       - install -Dm755 -t /app/lib/projekttage/ *.py _mcmf.py _zuteilungsplaner.py
+      - cp -r beispieldaten /app/lib/projekttage/beispieldaten
       - echo '#!/bin/bash' > /app/bin/projekttage
       - echo 'exec python3 /app/lib/projekttage/mitmachlotse.py "$@"' >> /app/bin/projekttage
       - chmod +x /app/bin/projekttage

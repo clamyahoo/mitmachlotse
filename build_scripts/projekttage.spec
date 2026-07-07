@@ -11,7 +11,9 @@ a = Analysis(
         'hauptfenster.py','database.py','algorithmen.py','dialoge.py',
         'importexport.py','listenabfragen.py','listenfenster.py',
         'validierung.py','_mcmf.py','_zuteilungsplaner.py',
-    ]],
+    ]] + [
+        (str(f), 'beispieldaten') for f in (APP_DIR / 'beispieldaten').glob('*')
+    ],
     hiddenimports=['PyQt6.QtCore','PyQt6.QtGui','PyQt6.QtWidgets',
                    'PyQt6.QtPrintSupport','openpyxl','odf','odf.opendocument',
                    'sqlite3','csv','_mcmf','_zuteilungsplaner'],
