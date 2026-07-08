@@ -371,6 +371,7 @@ def _kandidaten_spaltennamen(konfig: dict = None) -> set:
         "stufenmin", "stufenmax", "jgst. min", "jgst. max",
         "tnmin", "tnmax", "plätze min", "plätze max",
         "zuteilung", "geschlecht",
+        "raumname", "raum", "kapazität", "kapazitaet", "beschreibung",
     }
 
 
@@ -387,6 +388,45 @@ def _ist_plausible_headerzeile(row: list, kandidaten: set) -> bool:
     return False
 
 
+def entferne_geisterzeilen(headers: list, rows: list, konfig: dict = None) -> tuple[list, list]:
+    """
+    Entfernt „Geisterzeilen", die beim Reimport einer selbst exportierten
+    Gesamtliste (nach Gruppen ODER nach Optionen) mitten im Datenbereich
+    stehen: die je Abschnitt wiederholten Kopfzeilen und die
+    Abschnittsüberschriften (Gruppen-/Optionsname). Ohne diese Bereinigung
+    würden daraus fehlerhafte Datensätze entstehen (z. B. ein „Teilnehmer"
+    namens „1: Holzwerkstatt" oder „Name").
+
+    Greift bewusst nur, wenn die Datei tatsächlich wie ein mehrteiliger
+    Selbstexport aussieht (mindestens eine wiederholte Kopfzeile im
+    Datenbereich). Für gewöhnliche Importdateien bleibt alles unverändert,
+    damit keine legitimen Zeilen verloren gehen.
+    """
+    if not rows:
+        return headers, rows
+    kandidaten = _kandidaten_spaltennamen(konfig)
+    hat_wiederholten_header = any(
+        _ist_plausible_headerzeile(r, kandidaten) for r in rows
+    )
+    if not hat_wiederholten_header:
+        return headers, rows
+
+    bereinigt = []
+    for row in rows:
+        # (a) wiederholte Kopfzeile (≥2 bekannte Spaltennamen)
+        if _ist_plausible_headerzeile(row, kandidaten):
+            continue
+        # (b) Abschnittsüberschrift (nur erste Spalte gefüllt) oder komplette
+        # Leerzeile (Abstandszeile zwischen den Abschnitten). Echte Teilnehmer-/
+        # Optionszeilen aus einem Export haben immer noch mindestens
+        # Gruppenbereich bzw. weitere Felder gefüllt.
+        nicht_leer = [i for i, v in enumerate(row) if str(v).strip() != ""]
+        if not nicht_leer or nicht_leer == [0]:
+            continue
+        bereinigt.append(row)
+    return headers, bereinigt
+
+
 def bereinige_titelzeilen(headers: list, rows: list, konfig: dict = None,
                            max_suchtiefe: int = 15) -> tuple[list, list]:
     """
@@ -394,7 +434,9 @@ def bereinige_titelzeilen(headers: list, rows: list, konfig: dict = None,
     wie sie z. B. beim eigenen Listenexport entstehen (Kopfzeile +
     Gruppen-/Optionsname stehen dort über der Tabelle). Praktisch für den
     Reimport von Dateien, die zuvor mit "Gesamtliste exportieren" oder
-    dem Fenster-Export erzeugt wurden.
+    dem Fenster-Export erzeugt wurden. Zusätzlich werden über
+    entferne_geisterzeilen die je Abschnitt wiederholten Kopf- und
+    Titelzeilen aus dem Datenbereich entfernt.
 
     Greift nur, wenn die aktuell erkannten Header NICHT plausibel
     aussehen, aber eine der nächsten Zeilen schon — sonst bleibt alles
@@ -404,13 +446,13 @@ def bereinige_titelzeilen(headers: list, rows: list, konfig: dict = None,
         return headers, rows
     kandidaten = _kandidaten_spaltennamen(konfig)
     if _ist_plausible_headerzeile(headers, kandidaten):
-        return headers, rows
+        return entferne_geisterzeilen(headers, rows, konfig)
 
     for i, row in enumerate(rows[:max_suchtiefe]):
         if _ist_plausible_headerzeile(row, kandidaten):
             neue_headers = [str(v).strip() for v in row]
             neue_rows = rows[i + 1:]
-            return neue_headers, neue_rows
+            return entferne_geisterzeilen(neue_headers, neue_rows, konfig)
 
     return headers, rows  # keine plausible Kopfzeile gefunden -> unverändert
 
@@ -659,6 +701,46 @@ def import_teilnehmer(headers: list, rows: list, mapping: dict, append: bool = F
     return importierte_ids
 
 
+def get_raum_felder() -> list:
+    """App-Felder für den Raumlisten-Import (key, Anzeigelabel)."""
+    return [
+        ("name",         "Raumname"),
+        ("kapazitaet",   "Kapazität"),
+        ("beschreibung", "Beschreibung"),
+    ]
+
+
+def _default_raum() -> dict:
+    return {"name": "-", "kapazitaet": 0, "beschreibung": ""}
+
+
+def import_raeume(headers: list, rows: list, mapping: dict, append: bool = False):
+    """Importiert Räume. mapping = {app_feld: quelltabellen_index, ...}"""
+    if not append:
+        # Alle bestehenden Räume ersetzen (Zuordnungen an Optionen bleiben über
+        # raum_id bestehen, verweisen dann ggf. ins Leere -> unkritisch, Anzeige
+        # zeigt einfach keinen Raumnamen mehr).
+        for raum in db.get_all_raeume():
+            db.delete_raum(raum["id"])
+
+    for row in rows:
+        record = _default_raum()
+        for feld, idx in mapping.items():
+            if idx is None:
+                continue
+            try:
+                val = row[idx] if idx < len(row) else ""
+            except (IndexError, TypeError):
+                val = ""
+            if feld == "kapazitaet":
+                record[feld] = _coerce_int(val)
+            else:
+                record[feld] = val if val else record[feld]
+        # Nur Räume mit echtem Namen anlegen
+        if record["name"] and record["name"] != "-":
+            db.upsert_raum(record)
+
+
 def import_projekte(headers: list, rows: list, mapping: dict, append: bool = False):
     """mapping = {app_feld: quelltabellen_index, ...}"""
     if not append:
@@ -903,12 +985,20 @@ def export_html(filepath: str, sort_mode: str, titel: str, jahr: str,
 # Listenexport  (Fensterlisten + Gesamtlisten)
 # ═══════════════════════════════════════════════════════════════════════════
 
-def filter_wunsch_spalten(headers: list, rows: list, mit_wuenschen: bool):
-    """Entfernt Wunsch-Spalten wenn mit_wuenschen=False."""
-    if mit_wuenschen:
+def filter_spalten(headers: list, rows: list, kept_indices):
+    """
+    Reduziert Header- und Zeilenlisten auf die in kept_indices genannten
+    Spalten (in der gegebenen Reihenfolge der Originalspalten). Format-agnostisch,
+    daher gleichermaßen für xlsx/ods/csv/pdf-Export und HTML-Druck nutzbar.
+
+    kept_indices=None → unverändert zurückgeben (keine Auswahl getroffen).
+    Leere Auswahl → ebenfalls unverändert (schützt vor versehentlich leerem Export).
+    """
+    if kept_indices is None:
         return headers, rows
-    idx = [i for i, h in enumerate(headers)
-           if not h.strip().lower().startswith("wunsch")]
+    idx = [i for i in kept_indices if 0 <= i < len(headers)]
+    if not idx:
+        return headers, rows
     return (
         [headers[i] for i in idx],
         [[r[i] for i in idx if i < len(r)] for r in rows]

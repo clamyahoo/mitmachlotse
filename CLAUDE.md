@@ -38,13 +38,13 @@ Flat module layout, no packages. Each file is a layer:
 | Module | Responsibility |
 |---|---|
 | `mitmachlotse.py` | Entry point, `QApplication` setup, global stylesheet |
-| `hauptfenster.py` | `MainWindow` (3 tabs), `AngebotsTable`/`TeilnehmerTable`, `StatistikWidget` |
-| `dialoge.py` | All modal dialogs (import wizard, setup wizard, quality-check window, etc.) — largest file |
+| `hauptfenster.py` | `MainWindow` (4 tabs incl. Raumplan), `AngebotsTable`/`TeilnehmerTable`/`RaeumeTable`/`RaumplanTable`, `StatistikWidget` |
+| `dialoge.py` | All modal dialogs (import wizard, setup wizard, quality-check window, `SpaltenauswahlDialog`, `SpeicherorteDialog`, etc.) — largest file |
 | `listenfenster.py` | `ListenFenster` — non-modal list windows (multiple can be open at once) |
 | `listenabfragen.py` | Read-only DB queries backing the list/quality-check windows |
-| `database.py` | SQLite schema, migrations, CRUD, and the configurable-label system |
-| `importexport.py` | CSV/xlsx/ods import, xlsx/ods/csv/pdf/html export, column-mapping/merge logic |
-| `validierung.py` | Wish-eligibility checks (grade-range validation) |
+| `database.py` | SQLite schema, migrations, CRUD, room CRUD, save-location config, and the configurable-label system |
+| `importexport.py` | CSV/xlsx/ods import, xlsx/ods/csv/pdf/html export, column-mapping/merge logic, `filter_spalten` |
+| `validierung.py` | Wish-eligibility checks (grade-range validation) and `pruefe_raumkonflikte` |
 | `algorithmen.py` | Algorithms A/B/C — build weighted flow networks, wrap `_zuteilungsplaner` |
 | `_zuteilungsplaner.py` | Translates participants/projects into an MCMF graph, calls `_mcmf`, extracts assignment |
 | `_mcmf.py` | Generic min-cost-max-flow solver (successive shortest paths, Dijkstra + Johnson potentials) |
@@ -83,10 +83,22 @@ detection") are applied as small cost tie-breakers, not hard constraints.
 
 ### Database (`database.py`)
 
-SQLite, three tables: `projekte`, `teilnehmer`, `feldkonfiguration`. `init_db()` both
-creates tables and runs idempotent migrations (column/table renames, added columns) —
+SQLite, four tables: `projekte`, `teilnehmer`, `feldkonfiguration`, `raeume`. `init_db()`
+both creates tables and runs idempotent migrations (column/table renames, added columns) —
 when changing schema, add a migration branch here rather than assuming a fresh DB.
 Writes commit immediately; there is no explicit save step in the UI.
+
+Rooms are keyed by their own stable `raeume.id`; each option references a room via
+`projekte.raum_id` (plus a free-text `projekte.zeit`). Crucially, `upsert_projekt` and
+`renumber_projekte_und_insert` must **not** touch `raum_id`/`zeit` — editing an option in
+the Optionen tab or renumbering options must preserve the room assignment. Room/time are
+written only through the dedicated `set_raum_zeit_for_projekt`. `pruefe_raumkonflikte`
+(in `validierung.py`) reads `get_raumplan()` and flags double-bookings (same room+time)
+and capacity issues as non-blocking hints.
+
+Preconfigured export folders are stored as a JSON list under the `export_speicherorte`
+feldkonfig key (`get_speicherorte`/`set_speicherorte`); they surface as sidebar shortcuts
+in the save dialogs, not as direct WebDAV uploads.
 
 ### Import/export (`importexport.py`)
 

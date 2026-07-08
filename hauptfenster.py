@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
     QInputDialog, QToolBar, QSizePolicy, QAbstractItemView,
     QApplication, QGroupBox, QRadioButton, QButtonGroup
 )
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QUrl
 from PyQt6.QtGui import QAction, QKeySequence, QColor, QFont, QIcon, QPalette
 
 import database as db
@@ -78,6 +78,34 @@ def _build_angebots_headers_keys():
     headers += [f"{sl} min", f"{sl} max", "Plätze min", "Plätze max"]
     keys    += ["stufenmin", "stufenmax", "tnmin", "tnmax"]
     return headers, keys
+
+
+def _build_raumplan_spalten() -> list:
+    """Gibt die Spaltenstruktur der Raumzuordnungstabelle als Liste von
+    (key, label) zurück. Leitung und das Zusatzfeld sind optional: nur
+    enthalten, wenn ihre Bezeichnung in der Feldkonfiguration gesetzt ist
+    (leer = ausgeblendet, analog zu Optionen/Teilnehmer/innen)."""
+    k   = db.get_feldkonfig()
+    pl  = k.get("projekt_label", "Option")
+    ll  = k.get("leitung_label", "").strip()
+    rzl = k.get("raumzuordnung_extra_label", "").strip()
+    name_h = db.get_label_formen(pl)["name"]
+
+    spalten = [("nummer", "Nr.")]
+    if ll:
+        spalten.append(("leitung", ll))
+    spalten.append(("projektname", name_h))
+    spalten += [
+        ("tnmax", "Plätze max"),
+        ("belegt", "belegt"),
+        ("raum", "Raum"),
+        ("kapazitaet", "Kapazität"),
+        ("zeit", "Zeit"),
+    ]
+    if rzl:
+        spalten.append(("raumzuordnung_extra", rzl))
+    spalten.append(("hinweis", "Hinweis"))
+    return spalten
 
 
 class AngebotsTable(QTableWidget):
@@ -148,6 +176,320 @@ class AngebotsTable(QTableWidget):
         except Exception as e:
             import traceback
             print(f"[AngebotsTable.save_row] {e}\n{traceback.format_exc()}")
+
+
+class RaeumeTable(QTableWidget):
+    """Editierbare Raumliste (Name, Kapazität, Beschreibung) mit Autosave."""
+
+    changed = pyqtSignal()
+
+    HEADERS = ["Raumname", "Kapazität", "Beschreibung"]
+
+    def __init__(self, parent=None):
+        super().__init__(0, 3, parent)
+        self._loading = False
+        self.setHorizontalHeaderLabels(self.HEADERS)
+        self.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.Stretch)
+        self.horizontalHeader().setSectionResizeMode(
+            2, QHeaderView.ResizeMode.Stretch)
+        self.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.setAlternatingRowColors(True)
+        _erzwinge_lesbare_selektion(self)
+        self.cellChanged.connect(self.save_row)
+
+    def load(self):
+        self._loading = True
+        raeume = db.get_all_raeume()
+        self.setRowCount(len(raeume))
+        for r, raum in enumerate(raeume):
+            self._set_row(r, raum)
+        self._loading = False
+
+    def _set_row(self, r: int, raum: dict):
+        name_item = QTableWidgetItem(str(raum.get("name", "") or ""))
+        # Raum-id an der Namenszelle mitführen (0/None = noch nicht gespeichert)
+        name_item.setData(Qt.ItemDataRole.UserRole, raum.get("id") or 0)
+        self.setItem(r, 0, name_item)
+        kap = raum.get("kapazitaet", 0) or 0
+        kap_item = QTableWidgetItem("" if kap == 0 else str(kap))
+        kap_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setItem(r, 1, kap_item)
+        self.setItem(r, 2, QTableWidgetItem(str(raum.get("beschreibung", "") or "")))
+
+    def add_empty_row(self):
+        self._loading = True
+        r = self.rowCount()
+        self.insertRow(r)
+        self._set_row(r, {"id": 0, "name": "", "kapazitaet": 0, "beschreibung": ""})
+        self._loading = False
+        self.setCurrentCell(r, 0)
+        self.editItem(self.item(r, 0))
+
+    def save_row(self, row: int, _col: int = 0):
+        if self._loading:
+            return
+        try:
+            name_item = self.item(row, 0)
+            if name_item is None:
+                return
+            name = name_item.text().strip()
+            if not name:
+                return  # ohne Namen nicht speichern
+            kap_txt = (self.item(row, 1).text().strip() if self.item(row, 1) else "")
+            try:
+                kap = int(kap_txt) if kap_txt else 0
+            except ValueError:
+                kap = 0
+            besch = (self.item(row, 2).text() if self.item(row, 2) else "")
+            raum_id = name_item.data(Qt.ItemDataRole.UserRole) or 0
+            neue_id = db.upsert_raum({
+                "id": raum_id, "name": name,
+                "kapazitaet": kap, "beschreibung": besch,
+            })
+            if not raum_id:
+                # frisch angelegt -> id an der Zelle vermerken
+                self._loading = True
+                name_item.setData(Qt.ItemDataRole.UserRole, neue_id)
+                self._loading = False
+            self.changed.emit()
+        except Exception as e:
+            import traceback
+            print(f"[RaeumeTable.save_row] {e}\n{traceback.format_exc()}")
+
+    def get_selected_ids(self) -> list:
+        ids = []
+        for row in sorted(set(idx.row() for idx in self.selectedIndexes())):
+            item = self.item(row, 0)
+            if item:
+                rid = item.data(Qt.ItemDataRole.UserRole) or 0
+                if rid:
+                    ids.append(rid)
+        return ids
+
+
+class RaumplanTable(QTableWidget):
+    """Je Option eine Zeile: Raum (Auswahl) + Zeit zuordnen, mit Konfliktfarben."""
+
+    changed = pyqtSignal()
+
+    # Spalten (key, label) -- dynamisch, siehe _build_raumplan_spalten().
+    # Leitung und Zusatzfeld sind optional und daher nicht Teil einer festen
+    # Indexliste; self._idx bildet key -> aktuelle Spaltennummer ab.
+
+    # Hintergrundfarben für Konflikthinweise
+    FARBE_DOPPEL = QColor("#f8d0d0")   # rot -> Doppelbelegung
+    FARBE_KAP    = QColor("#ffe3b3")   # orange -> Kapazität
+
+    def __init__(self, parent=None):
+        super().__init__(0, 0, parent)
+        self._loading = False
+        self._raeume = []
+        self._spalten = []   # [(key, label), ...]
+        self._idx = {}       # key -> Spaltenindex
+        self._rebuild_columns()
+        self.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.setAlternatingRowColors(True)
+        _erzwinge_lesbare_selektion(self)
+        self.cellChanged.connect(self._on_cell_changed)
+
+    def _rebuild_columns(self):
+        """Baut die Spaltenstruktur neu auf (z. B. wenn Leitung oder das
+        Zusatzfeld aktiviert/deaktiviert wurden)."""
+        self._spalten = _build_raumplan_spalten()
+        self._idx = {key: i for i, (key, _label) in enumerate(self._spalten)}
+        self.setColumnCount(len(self._spalten))
+        self.setHorizontalHeaderLabels([label for _key, label in self._spalten])
+        header = self.horizontalHeader()
+        if "projektname" in self._idx:
+            header.setSectionResizeMode(
+                self._idx["projektname"], QHeaderView.ResizeMode.Stretch)
+        if "hinweis" in self._idx:
+            header.setSectionResizeMode(
+                self._idx["hinweis"], QHeaderView.ResizeMode.Stretch)
+
+    def _ro_item(self, text: str, center: bool = False) -> QTableWidgetItem:
+        item = QTableWidgetItem(text)
+        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        if center:
+            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        return item
+
+    def load(self):
+        self._loading = True
+        self._rebuild_columns()
+        self._raeume = db.get_all_raeume()
+        plan = db.get_raumplan()
+        # Zeilen zuerst vollständig entfernen und neu anlegen: Ändert sich die
+        # Spaltenstruktur (z. B. Leitung/Zusatzfeld aktiviert oder
+        # deaktiviert), bleiben sonst verwaiste Zellwidgets (Raum-Comboboxen)
+        # an ihrer alten Spaltenposition hängen -- setItem() entfernt ein
+        # bereits gesetztes setCellWidget() nicht automatisch. Reine Zeilen
+        # neu anzulegen räumt auch deren Widgets zuverlässig ab.
+        self.setRowCount(0)
+        self.setRowCount(len(plan))
+        for r, row in enumerate(plan):
+            self.setItem(r, self._idx["nummer"], self._ro_item(str(row["nummer"]), True))
+            if "leitung" in self._idx:
+                self.setItem(r, self._idx["leitung"],
+                             self._ro_item(str(row.get("leitung", "") or "")))
+            self.setItem(r, self._idx["projektname"],
+                         self._ro_item(str(row.get("projektname", "") or "")))
+            self.setItem(r, self._idx["tnmax"], self._ro_item(str(row.get("tnmax", "") or ""), True))
+            self.setItem(r, self._idx["belegt"], self._ro_item(str(row.get("belegt", 0) or 0), True))
+            # Raum-Auswahl als ComboBox
+            combo = QComboBox()
+            combo.addItem("— kein Raum —", 0)
+            for raum in self._raeume:
+                combo.addItem(raum["name"], raum["id"])
+            aktuelle_id = row.get("raum_id") or 0
+            idx = combo.findData(aktuelle_id)
+            combo.setCurrentIndex(idx if idx >= 0 else 0)
+            combo.currentIndexChanged.connect(
+                lambda _i, rr=r: self._on_raum_changed(rr))
+            self.setCellWidget(r, self._idx["raum"], combo)
+            # Kapazität des gewählten Raums (abgeleitet, read-only)
+            self.setItem(r, self._idx["kapazitaet"],
+                         self._ro_item(self._kap_text(aktuelle_id), True))
+            # Zeit editierbar
+            self.setItem(r, self._idx["zeit"], QTableWidgetItem(str(row.get("zeit", "") or "")))
+            if "raumzuordnung_extra" in self._idx:
+                self.setItem(r, self._idx["raumzuordnung_extra"],
+                             QTableWidgetItem(str(row.get("raumzuordnung_extra", "") or "")))
+            self.setItem(r, self._idx["hinweis"], self._ro_item(""))
+        self._loading = False
+        self._aktualisiere_konflikte()
+
+    def _kap_text(self, raum_id: int) -> str:
+        if not raum_id:
+            return ""
+        for raum in self._raeume:
+            if raum["id"] == raum_id:
+                k = raum.get("kapazitaet", 0) or 0
+                return "" if k == 0 else str(k)
+        return ""
+
+    def _nummer(self, row: int) -> int:
+        item = self.item(row, self._idx["nummer"])
+        return int(item.text()) if item and item.text().strip() else 0
+
+    def _raum_id(self, row: int) -> int:
+        combo = self.cellWidget(row, self._idx["raum"])
+        return combo.currentData() if combo else 0
+
+    def _zeit(self, row: int) -> str:
+        item = self.item(row, self._idx["zeit"])
+        return item.text() if item else ""
+
+    def _raumzuordnung_extra_wert(self, row: int) -> str:
+        if "raumzuordnung_extra" not in self._idx:
+            return ""
+        item = self.item(row, self._idx["raumzuordnung_extra"])
+        return item.text() if item else ""
+
+    def _on_raum_changed(self, row: int):
+        if self._loading:
+            return
+        raum_id = self._raum_id(row)
+        db.set_raum_zeit_for_projekt(self._nummer(row), raum_id, self._zeit(row))
+        # Kapazitätsspalte nachziehen
+        self._loading = True
+        self.setItem(row, self._idx["kapazitaet"], self._ro_item(self._kap_text(raum_id), True))
+        self._loading = False
+        self._aktualisiere_konflikte()
+        self.changed.emit()
+
+    def _on_cell_changed(self, row: int, col: int):
+        if self._loading:
+            return
+        if col == self._idx.get("zeit"):
+            db.set_raum_zeit_for_projekt(self._nummer(row), self._raum_id(row), self._zeit(row))
+            self._aktualisiere_konflikte()
+            self.changed.emit()
+        elif col == self._idx.get("raumzuordnung_extra"):
+            db.set_raumzuordnung_extra(self._nummer(row), self._raumzuordnung_extra_wert(row))
+            self.changed.emit()
+
+    def _aktualisiere_konflikte(self):
+        """Färbt Zellen und füllt die Hinweisspalte anhand pruefe_raumkonflikte()."""
+        konf = val_mod.pruefe_raumkonflikte()
+        farb_spalten = [self._idx[k] for k in ("raum", "zeit", "hinweis") if k in self._idx]
+        self._loading = True
+        try:
+            for row in range(self.rowCount()):
+                nummer = self._nummer(row)
+                info = konf.get(nummer)
+                hinweis_item = self.item(row, self._idx["hinweis"])
+                if hinweis_item is None:
+                    hinweis_item = self._ro_item("")
+                    self.setItem(row, self._idx["hinweis"], hinweis_item)
+                if info:
+                    farbe = self.FARBE_DOPPEL if info["doppelbelegung"] else self.FARBE_KAP
+                    hinweis_item.setText(info["text"].replace("\n", "  •  "))
+                    hinweis_item.setToolTip(info["text"])
+                    for col in farb_spalten:
+                        zell = self.item(row, col)
+                        if zell is not None:
+                            zell.setBackground(farbe)
+                    # Combobox-Zelle hat kein Item -> Zeit/Hinweis reichen als Signal
+                else:
+                    hinweis_item.setText("")
+                    hinweis_item.setToolTip("")
+                    for col in farb_spalten:
+                        zell = self.item(row, col)
+                        if zell is not None:
+                            zell.setBackground(QColor(Qt.GlobalColor.transparent))
+        finally:
+            self._loading = False
+
+    def refresh_aus_optionen(self):
+        """Aktualisiert die aus der Optionsliste gespiegelten, schreibgeschützten
+        Felder (Leitung, Optionsname, Plätze max, belegt) sowie die
+        Konfliktfärbung -- ohne die Raum-Dropdowns neu aufzubauen. Wird nach
+        jeder Änderung im Optionen-Tab sowie nach jeder Zuteilung aufgerufen."""
+        if self.rowCount() == 0:
+            return
+        plan = {row["nummer"]: row for row in db.get_raumplan()}
+        self._loading = True
+        for r in range(self.rowCount()):
+            row = plan.get(self._nummer(r))
+            if row is None:
+                continue
+            if "leitung" in self._idx:
+                item = self.item(r, self._idx["leitung"])
+                if item is not None:
+                    item.setText(str(row.get("leitung", "") or ""))
+            item = self.item(r, self._idx["projektname"])
+            if item is not None:
+                item.setText(str(row.get("projektname", "") or ""))
+            item = self.item(r, self._idx["tnmax"])
+            if item is not None:
+                item.setText(str(row.get("tnmax", "") or ""))
+            item = self.item(r, self._idx["belegt"])
+            if item is not None:
+                item.setText(str(row.get("belegt", 0) or 0))
+        self._loading = False
+        self._aktualisiere_konflikte()
+
+    def export_daten(self) -> tuple:
+        """Gibt (headers, rows) des aktuellen Raumplans für Export/Druck zurück
+        -- in derselben Reihenfolge wie in der Tabelle angezeigt."""
+        headers = [label for _key, label in self._spalten]
+        rows = []
+        for r in range(self.rowCount()):
+            zeile = []
+            for key, _label in self._spalten:
+                if key == "raum":
+                    combo = self.cellWidget(r, self._idx["raum"])
+                    txt = combo.currentText() if combo else ""
+                    if txt.startswith("—"):
+                        txt = ""
+                    zeile.append(txt)
+                else:
+                    item = self.item(r, self._idx[key])
+                    zeile.append(item.text() if item else "")
+            rows.append(zeile)
+        return headers, rows
 
 
 def _build_teilnehmer_headers_keys():
@@ -681,6 +1023,8 @@ class MainWindow(QMainWindow):
         self.a_manuell.setText(f"{lbl} fix zuweisen")
         self.a14_teilnehmerliste.setText(f"Teilnehmerliste nach {lbl}")
         self.a_exp_pr.setText(f"Gesamtliste nach {plP} exportieren")
+        if hasattr(self, "raumplan_table"):
+            self.raumplan_table.load()
         self.statistik_widget.refresh()
 
     # ── Spaltenbezeichnungen ──────────────────────────────────────────────────
@@ -711,6 +1055,7 @@ class MainWindow(QMainWindow):
 
         # Tab-Widget
         self.tabs = QTabWidget()
+        self.tabs.currentChanged.connect(self._on_tab_changed)
         main_layout.addWidget(self.tabs)
 
         # Tab 1: Schüler
@@ -771,7 +1116,62 @@ class MainWindow(QMainWindow):
         self.tabs.setTabIcon(1, QIcon.fromTheme("folder",
             QIcon.fromTheme("folder-open")))
 
-        # Tab 3: Statistik
+        # Tab 3: Raumplan (Räume + Zeitzuordnung)
+        raumplan_tab = QWidget()
+        rl = QVBoxLayout(raumplan_tab)
+
+        raum_group = QGroupBox("Raumliste")
+        rg_layout = QVBoxLayout(raum_group)
+        rg_btns = QHBoxLayout()
+        btn_add_raum = QPushButton("+ Raum hinzufügen")
+        btn_add_raum.clicked.connect(self._add_raum)
+        btn_del_raum = QPushButton("✗ Raum löschen")
+        btn_del_raum.clicked.connect(self._delete_raum)
+        btn_import_raum = QPushButton("Raumliste importieren")
+        btn_import_raum.clicked.connect(self._importiere_raeume)
+        btn_export_raum = QPushButton("Raumliste exportieren")
+        btn_export_raum.clicked.connect(self._export_raumliste)
+        rg_btns.addWidget(btn_add_raum)
+        rg_btns.addWidget(btn_del_raum)
+        rg_btns.addWidget(btn_import_raum)
+        rg_btns.addWidget(btn_export_raum)
+        rg_btns.addStretch()
+        rg_layout.addLayout(rg_btns)
+        self.raeume_table = RaeumeTable()
+        rg_layout.addWidget(self.raeume_table)
+        rl.addWidget(raum_group)
+
+        plan_group = QGroupBox(
+            "Raumzuordnung – je Option ein Raum und eine Zeit "
+            "(Doppelbelegungen und Kapazitätsprobleme werden farbig markiert)"
+        )
+        pg_layout = QVBoxLayout(plan_group)
+        pg_btns = QHBoxLayout()
+        pg_btns.addStretch()
+        btn_exp_raum = QPushButton("Exportieren")
+        btn_exp_raum.clicked.connect(self._export_raumplan)
+        btn_druck_raum = QPushButton("Drucken")
+        btn_druck_raum.clicked.connect(self._drucken_raumplan)
+        btn_vor_raum = QPushButton("Druckvorschau")
+        btn_vor_raum.clicked.connect(self._druckvorschau_raumplan)
+        pg_btns.addWidget(btn_exp_raum)
+        pg_btns.addWidget(btn_druck_raum)
+        pg_btns.addWidget(btn_vor_raum)
+        pg_layout.addLayout(pg_btns)
+        self.raumplan_table = RaumplanTable()
+        pg_layout.addWidget(self.raumplan_table)
+        rl.addWidget(plan_group)
+
+        # Räume-Änderung -> Raumplan-Dropdowns/Kapazitäten neu laden
+        self.raeume_table.changed.connect(self._refresh_raumplan)
+        # Optionen-Änderung (u. a. Leitung, Optionsname, Plätze max) live
+        # in der Raumzuordnung spiegeln
+        self.angebots_table.changed.connect(self.raumplan_table.refresh_aus_optionen)
+        self.tabs.addTab(raumplan_tab, "Raumplan")
+        self.tabs.setTabIcon(2, QIcon.fromTheme("view-calendar",
+            QIcon.fromTheme("office-calendar", QIcon.fromTheme("map"))))
+
+        # Tab 4: Statistik
         self.statistik_widget = StatistikWidget()
         self.statistik_widget.wunschauswertung_angefordert.connect(self._oeffne_wunschauswertung_fuer_projekt)
         self.statistik_widget.projektdetails_angefordert.connect(self._zeige_projektdetails)
@@ -787,7 +1187,7 @@ class MainWindow(QMainWindow):
             self._export_gesamtliste_nach_projekten)
         self.angebots_table.changed.connect(self.statistik_widget.refresh)
         self.tabs.addTab(self.statistik_widget, "Auswertung, Nachbearbeitung, Export")
-        self.tabs.setTabIcon(2, QIcon.fromTheme("x-office-spreadsheet",
+        self.tabs.setTabIcon(3, QIcon.fromTheme("x-office-spreadsheet",
             QIcon.fromTheme("office-chart-bar", QIcon.fromTheme("applications-other"))))
 
         # Status-Bar
@@ -889,6 +1289,10 @@ class MainWindow(QMainWindow):
         a3d = QAction("Tabellen-Export- und Importassistenten starten", self)
         a3d.triggered.connect(self._tabellen_assistent_starten)
         m_datei.addAction(a3d)
+
+        a3e = QAction("Speicherorte verwalten (für Export, z. B. Nextcloud/WebDAV)", self)
+        a3e.triggered.connect(self._speicherorte_verwalten)
+        m_datei.addAction(a3e)
 
         m_datei.addSeparator()
 
@@ -1011,11 +1415,15 @@ class MainWindow(QMainWindow):
         a_bsp_mappe.triggered.connect(self._oeffne_beispiel_planungsmappe)
         m_beispiel.addAction(a_bsp_mappe)
 
-        a_bsp_import = QAction(
-            "Beispiel-Importdateien speichern (zum Ausprobieren des Imports)", self
-        )
-        a_bsp_import.triggered.connect(self._speichere_beispiel_importdateien)
-        m_beispiel.addAction(a_bsp_import)
+        m_beispiel.addSeparator()
+
+        a_bsp_tn = QAction("Beispiel-Teilnehmerliste importieren", self)
+        a_bsp_tn.triggered.connect(self._importiere_beispiel_teilnehmer)
+        m_beispiel.addAction(a_bsp_tn)
+
+        a_bsp_pr = QAction("Beispiel-Optionsliste importieren", self)
+        a_bsp_pr.triggered.connect(self._importiere_beispiel_projekte)
+        m_beispiel.addAction(a_bsp_pr)
 
         m_hilfe.addSeparator()
 
@@ -1041,9 +1449,11 @@ class MainWindow(QMainWindow):
         sc("Ctrl+1",   lambda: self.tabs.setCurrentIndex(0))
         sc("Ctrl+2",   lambda: self.tabs.setCurrentIndex(1))
         sc("Ctrl+3",   lambda: self.tabs.setCurrentIndex(2))
+        sc("Ctrl+4",   lambda: self.tabs.setCurrentIndex(3))
         sc("Alt+1",    lambda: self.tabs.setCurrentIndex(0))
         sc("Alt+2",    lambda: self.tabs.setCurrentIndex(1))
         sc("Alt+3",    lambda: self.tabs.setCurrentIndex(2))
+        sc("Alt+4",    lambda: self.tabs.setCurrentIndex(3))
 
         # Tabellen: Neu / Löschen / Neu laden – kontextabhängig
         sc("Ctrl+N",    self._shortcut_neu)
@@ -1056,7 +1466,22 @@ class MainWindow(QMainWindow):
     def _refresh_all(self):
         self._refresh_teilnehmer()
         self._refresh_angebote()
+        self._refresh_raumplan()
         self.statistik_widget.refresh()
+
+    def _refresh_raumplan(self):
+        """Lädt Raumliste und Raumzuordnung neu (falls Tab bereits gebaut)."""
+        if hasattr(self, "raeume_table"):
+            self.raeume_table.load()
+        if hasattr(self, "raumplan_table"):
+            self.raumplan_table.load()
+
+    def _on_tab_changed(self, idx: int):
+        """Beim Wechsel auf den Raumplan-Tab die gespiegelten Felder (u. a.
+        „belegt", Leitung) auffrischen, damit sie eine zwischenzeitliche
+        (Um-)Zuteilung bzw. Bearbeitung im Optionen-Tab widerspiegeln."""
+        if idx == 2 and hasattr(self, "raumplan_table"):
+            self.raumplan_table.refresh_aus_optionen()
 
     def _refresh_and_reselect(self):
         """Nach save_row: Tabelle neu sortieren, zuletzt bearbeiteten TN wiederfinden."""
@@ -1176,24 +1601,26 @@ class MainWindow(QMainWindow):
     BEISPIEL_ORDNER = Path(__file__).parent / "beispieldaten"
 
     def _oeffne_beispiel_planungsmappe(self):
-        """Hilfe → Beispieldaten ausprobieren → Beispiel-Planungsmappe öffnen."""
+        """
+        Hilfe → Beispieldaten ausprobieren → Beispiel-Planungsmappe öffnen.
+        Lädt direkt eine Arbeitskopie der mitgelieferten Beispieldatei, ohne
+        Speicherort-Abfrage -- die Kopie liegt im Temp-Verzeichnis, analog zu
+        "Neue leere Planungsmappe erstellen" (_erstelle_leere_db). Wer die
+        Beispieldaten dauerhaft behalten möchte, nutzt anschließend ganz
+        normal "Planungsmappe speichern als".
+        """
         quelle = self.BEISPIEL_ORDNER / "planungsmappe_beispiel.plf"
         if not quelle.exists():
             QMessageBox.warning(self, "Beispieldaten", "Beispieldatei wurde nicht gefunden.")
             return
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Beispiel-Planungsmappe speichern unter",
-            "beispiel_planungsmappe.plf",
-            f"{self.PMAPPE_FILTER};;{self.PMAPPE_ALT}"
-        )
-        if not path:
-            return
-        if Path(path).suffix.lower() not in (self.PMAPPE_ENDUNG, ".db"):
-            path += self.PMAPPE_ENDUNG
         import shutil
-        shutil.copy2(str(quelle), path)
+        import tempfile
+        tmp_path = Path(tempfile.gettempdir()) / "beispiel_planungsmappe.plf"
+        if tmp_path.exists():
+            tmp_path.unlink()
+        shutil.copy2(str(quelle), tmp_path)
 
-        db.DB_PATH = Path(path)
+        db.DB_PATH = tmp_path
         db.init_db()
         self._refresh_all()
         self._sync_labels()
@@ -1212,36 +1639,35 @@ class MainWindow(QMainWindow):
             "Zum Ausprobieren z. B.:\n"
             "• Einteilung → Automatisch zuweisen (Algorithmus A/B/C)\n"
             "• Auswertung/Export → Wunschstatistik und Listen ansehen\n\n"
-            "Ihre bisherige Planungsmappe bleibt davon unberührt auf der Festplatte erhalten."
+            "Ihre bisherige Planungsmappe bleibt davon unberührt auf der Festplatte "
+            "erhalten. Möchten Sie das Beispiel dauerhaft behalten, nutzen Sie "
+            "anschließend \"Planungsmappe speichern als\"."
         )
 
-    def _speichere_beispiel_importdateien(self):
-        """Hilfe → Beispieldaten ausprobieren → Beispiel-Importdateien speichern."""
-        dateien = [
-            self.BEISPIEL_ORDNER / "teilnehmerliste_beispiel.xlsx",
-            self.BEISPIEL_ORDNER / "projektvorschlagsliste_beispiel.ods",
-        ]
-        if not all(d.exists() for d in dateien):
-            QMessageBox.warning(self, "Beispieldaten", "Beispieldateien wurden nicht gefunden.")
+    def _importiere_beispiel_teilnehmer(self):
+        """
+        Hilfe → Beispieldaten ausprobieren → Beispiel-Teilnehmerliste importieren.
+        Öffnet den normalen Importdialog mit bereits gewählter Beispieldatei --
+        Datei muss also nicht erst manuell gesucht werden, kann aber über
+        "Durchsuchen" weiterhin geändert werden.
+        """
+        quelle = self.BEISPIEL_ORDNER / "teilnehmerliste_beispiel.xlsx"
+        if not quelle.exists():
+            QMessageBox.warning(self, "Beispieldaten", "Beispieldatei wurde nicht gefunden.")
             return
-        ziel_ordner = QFileDialog.getExistingDirectory(
-            self, "Ordner für Beispiel-Importdateien wählen"
-        )
-        if not ziel_ordner:
+        dlg = ImportDialog("schueler", self, vorbelegter_pfad=str(quelle))
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self._refresh_all()
+
+    def _importiere_beispiel_projekte(self):
+        """Hilfe → Beispieldaten ausprobieren → Beispiel-Optionsliste importieren."""
+        quelle = self.BEISPIEL_ORDNER / "projektvorschlagsliste_beispiel.ods"
+        if not quelle.exists():
+            QMessageBox.warning(self, "Beispieldaten", "Beispieldatei wurde nicht gefunden.")
             return
-        import shutil
-        for d in dateien:
-            shutil.copy2(str(d), str(Path(ziel_ordner) / d.name))
-        QMessageBox.information(
-            self, "Beispiel-Importdateien gespeichert",
-            f"Gespeichert nach:\n{ziel_ordner}\n\n"
-            f"• {dateien[0].name} – Teilnehmer/innen mit Wünschen, zum Ausprobieren von "
-            f"\"Importieren → Teilnehmer/innen importieren\" (Strg+I)\n"
-            f"• {dateien[1].name} – Optionsliste, zum Ausprobieren von "
-            f"\"Importieren → Optionen / Angebote importieren\" (Strg+Shift+I)\n\n"
-            "Beide Dateien lassen sich auch mit Excel oder LibreOffice öffnen "
-            "und bearbeiten, bevor sie importiert werden."
-        )
+        dlg = ImportDialog("projekte", self, vorbelegter_pfad=str(quelle))
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self._refresh_all()
 
     # ── Kontextabhängige Shortcut-Aktionen ───────────────────────────────────
 
@@ -1252,6 +1678,8 @@ class MainWindow(QMainWindow):
             self._add_teilnehmer()
         elif idx == 1:
             self._add_angebot()
+        elif idx == 2:
+            self._add_raum()
 
     def _shortcut_loeschen(self):
         """Entf: Zeile löschen, je nach aktivem Tab.
@@ -1268,6 +1696,12 @@ class MainWindow(QMainWindow):
             focused = QApplication.focusWidget()
             if focused is self.angebots_table or focused is self.angebots_table.viewport():
                 self._delete_angebot()
+        elif idx == 2:
+            # Im Raumplan-Tab nur die Raumliste löschbar (die Zuordnungstabelle
+            # spiegelt die Optionen und darf nicht per Entf verändert werden).
+            focused = QApplication.focusWidget()
+            if focused is self.raeume_table or focused is self.raeume_table.viewport():
+                self._delete_raum()
 
     def _shortcut_neu_laden(self):
         """F5: Neu laden, je nach aktivem Tab."""
@@ -1306,13 +1740,14 @@ class MainWindow(QMainWindow):
             "<tr><td><b>Strg+B</b></td><td>Spaltenbezeichnungen anpassen</td></tr>"
             "<tr><td><b>Strg+Q</b></td><td>App beenden</td></tr>"
             "<tr><th align='left' colspan='2'><u>&nbsp;<br>Navigation</u></th></tr>"
-            "<tr><td><b>Strg+1</b></td><td>Tab &#8222;Sch&uuml;ler/innen&#8220;</td></tr>"
+            "<tr><td><b>Strg+1</b></td><td>Tab &#8222;Teilnehmer/innen&#8220;</td></tr>"
             f"<tr><td><b>Strg+2</b></td><td>Tab &#8222;{self._get_pl()[2]}&#8220;</td></tr>"
-            "<tr><td><b>Strg+3</b></td><td>Tab &#8222;Statistik &amp; &Uuml;bersicht&#8220;</td></tr>"
+            "<tr><td><b>Strg+3</b></td><td>Tab &#8222;Raumplan&#8220;</td></tr>"
+            "<tr><td><b>Strg+4</b></td><td>Tab &#8222;Auswertung, Nachbearbeitung, Export&#8220;</td></tr>"
             "<tr><td><b>Strg+F</b></td><td>Suchfeld fokussieren</td></tr>"
             "<tr><td><b>Escape</b></td><td>Suche leeren / zurück zur Tabelle</td></tr>"
             "<tr><th align='left' colspan='2'><u>&nbsp;<br>Tabellen-Aktionen</u></th></tr>"
-            f"<tr><td><b>Strg+N</b></td><td>Neuer Eintrag (Teilnehmer/in oder {self._get_pl()[0]}, je nach Tab)</td></tr>"
+            f"<tr><td><b>Strg+N</b></td><td>Neuer Eintrag (Teilnehmer/in, {self._get_pl()[0]} oder Raum, je nach Tab)</td></tr>"
             "<tr><td><b>Entf</b></td><td>Markierten Eintrag löschen (Tabellenfokus nötig)</td></tr>"
             "<tr><td><b>F5</b></td><td>Tabelle neu laden</td></tr>"
             "<tr><th align='left' colspan='2'><u>&nbsp;<br>Import / Export</u></th></tr>"
@@ -1501,39 +1936,163 @@ class MainWindow(QMainWindow):
                 )
                 break
 
-    def _export_angebote(self):
-        """Exportiert die aktuelle Optionstabelle."""
+    def _spaltenauswahl(self, headers: list,
+                        titel: str = "Felder / Spalten für die Ausgabe wählen"):
+        """Zeigt die Feldauswahl vor dem Drucken (ohne Kopfzeile/Datum-Optionen,
+        die beim direkten Drucken nicht greifen).
+        Rückgabe: Liste der gewählten Spaltenindizes, oder None bei Abbruch."""
+        from dialoge import SpaltenauswahlDialog
+        dlg = SpaltenauswahlDialog(headers, titel, parent=self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return None
+        return dlg.get_kept_indices()
+
+    def _spaltenauswahl_export(self, headers: list,
+                               titel: str = "Felder / Spalten für die Ausgabe wählen",
+                               kopfzeile_vorgabe: str = ""):
+        """Wie _spaltenauswahl, aber für echte Datei-Exporte zusätzlich mit
+        Kopfzeile- und „Datum in der Fußzeile"-Option (wie beim Gesamtlisten-
+        Export). Rückgabe: (kept_indices, kopfzeile, datum_fusszeile), oder
+        None bei Abbruch."""
+        from dialoge import SpaltenauswahlDialog
+        dlg = SpaltenauswahlDialog(
+            headers, titel, parent=self,
+            mit_kopfzeile=True, kopfzeile_vorgabe=kopfzeile_vorgabe
+        )
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return None
+        return dlg.get_kept_indices(), dlg.get_kopfzeile(), dlg.get_datum_fusszeile()
+
+    def _angebote_headers_rows(self):
         headers, keys = _build_angebots_headers_keys()
         projekte = sorted(db.get_all_projekte(), key=lambda p: p["nummer"])
         rows = [[str(p.get(k, "") or "") for k in keys] for p in projekte]
+        return headers, rows
+
+    # ── Speicherorte (Sidebar im Speichern-Dialog) ────────────────────────────
+
+    def _sidebar_urls(self) -> list:
+        """QUrls der konfigurierten Speicherorte (nur existierende Ordner)."""
+        urls = []
+        for ort in db.get_speicherorte():
+            p = Path(ort["pfad"])
+            if p.exists():
+                urls.append(QUrl.fromLocalFile(str(p)))
+        return urls
+
+    def _save_dialog(self, titel: str, vorschlag: str, filter_str: str):
+        """Speichern-Dialog mit konfigurierten Speicherorten in der Seitenleiste.
+        Rückgabe (pfad, gewählter_filter) oder (None, None) bei Abbruch.
+        Fällt ohne konfigurierte Orte auf den Standarddialog zurück."""
+        extra = self._sidebar_urls()
+        start = os.path.join(self._last_export_dir, vorschlag)
+        if not extra:
+            pfad, sel = QFileDialog.getSaveFileName(self, titel, start, filter_str)
+            if pfad:
+                self._last_export_dir = os.path.dirname(pfad)
+            return pfad, sel
+        dlg = QFileDialog(self, titel, start, filter_str)
+        dlg.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
+        # Qt-Dialog erzwingen, damit die Seitenleisten-Einträge zuverlässig erscheinen
+        dlg.setOption(QFileDialog.Option.DontUseNativeDialog, True)
+        dlg.setSidebarUrls(dlg.sidebarUrls() + extra)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return None, None
+        files = dlg.selectedFiles()
+        if not files:
+            return None, None
+        pfad = files[0]
+        self._last_export_dir = os.path.dirname(pfad)
+        return pfad, dlg.selectedNameFilter()
+
+    def _dir_dialog(self, titel: str):
+        """Ordnerauswahl mit konfigurierten Speicherorten in der Seitenleiste."""
+        extra = self._sidebar_urls()
+        if not extra:
+            return QFileDialog.getExistingDirectory(self, titel, self._last_export_dir)
+        dlg = QFileDialog(self, titel, self._last_export_dir)
+        dlg.setFileMode(QFileDialog.FileMode.Directory)
+        dlg.setOption(QFileDialog.Option.ShowDirsOnly, True)
+        dlg.setOption(QFileDialog.Option.DontUseNativeDialog, True)
+        dlg.setSidebarUrls(dlg.sidebarUrls() + extra)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return ""
+        files = dlg.selectedFiles()
+        return files[0] if files else ""
+
+    def _speicherorte_verwalten(self):
+        """Datei → Speicherorte verwalten."""
+        from dialoge import SpeicherorteDialog
+        SpeicherorteDialog(self).exec()
+
+    def _export_angebote(self):
+        """Exportiert die aktuelle Optionstabelle."""
+        headers, rows = self._angebote_headers_rows()
+        auswahl = self._spaltenauswahl_export(headers)
+        if auswahl is None:
+            return
+        kept, kopfzeile, datum_fuss = auswahl
+        headers, rows = ie.filter_spalten(headers, rows, kept)
         pl, _, plP = self._get_pl()
         gruppen = [(plP, headers, rows)]
         ext_filter = "PDF (*.pdf);;Excel (*.xlsx);;ODS (*.ods);;CSV (*.csv)"
-        pfad, sel = QFileDialog.getSaveFileName(
-            self, f"{plP} exportieren", plP, ext_filter
-        )
+        pfad, sel = self._save_dialog(f"{plP} exportieren", plP, ext_filter)
         if not pfad:
             return
         fmt = {"PDF": "pdf", "Excel": "xlsx", "ODS": "ods", "CSV": "csv"}.get(
-            sel.split(" ")[0], "pdf"
+            (sel or "").split(" ")[0], "pdf"
         )
         if not any(pfad.lower().endswith(f".{x}") for x in ("pdf","xlsx","ods","csv")):
             pfad += f".{fmt}"
         try:
-            ie.export_gruppen(pfad, fmt, gruppen)
+            ie.export_gruppen(pfad, fmt, gruppen, kopfzeile=kopfzeile,
+                              datum_fusszeile=datum_fuss)
         except Exception as e:
             QMessageBox.critical(self, "Exportfehler", str(e))
 
-    def _build_angebote_html(self) -> str:
-        headers, keys = _build_angebots_headers_keys()
-        projekte = sorted(db.get_all_projekte(), key=lambda p: p["nummer"])
-        pl, _, plP = self._get_pl()
+    def _drucken_angebote(self):
+        from PyQt6.QtPrintSupport import QPrinter, QPrintDialog
+        from PyQt6.QtGui import QTextDocument
+        headers, rows = self._angebote_headers_rows()
+        kept = self._spaltenauswahl(headers)
+        if kept is None:
+            return
+        headers, rows = ie.filter_spalten(headers, rows, kept)
+        _, _, plP = self._get_pl()
+        printer = QPrinter(QPrinter.PrinterMode.ScreenResolution)
+        if QPrintDialog(printer, self).exec() != QPrintDialog.DialogCode.Accepted:
+            return
+        doc = QTextDocument()
+        doc.setHtml(self._html_tabelle(plP, headers, rows))
+        getattr(doc, 'print')(printer)
+
+    def _druckvorschau_angebote(self):
+        from PyQt6.QtPrintSupport import QPrinter, QPrintPreviewDialog
+        from PyQt6.QtGui import QTextDocument
+        headers, rows = self._angebote_headers_rows()
+        kept = self._spaltenauswahl(headers)
+        if kept is None:
+            return
+        headers, rows = ie.filter_spalten(headers, rows, kept)
+        _, _, plP = self._get_pl()
+        printer = QPrinter(QPrinter.PrinterMode.ScreenResolution)
+        dlg = QPrintPreviewDialog(printer, self)
+        def _render(p):
+            doc = QTextDocument()
+            doc.setHtml(self._html_tabelle(plP, headers, rows))
+            getattr(doc, 'print')(p)
+        dlg.paintRequested.connect(_render)
+        dlg.exec()
+
+    # ── Raumplan ─────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _html_tabelle(titel: str, headers: list, rows: list) -> str:
+        """Baut ein einfaches HTML-Dokument (eine Tabelle) für Druck/Vorschau."""
         th = "".join(f"<th>{h}</th>" for h in headers)
         tbody = ""
-        for p in projekte:
-            cells = "".join(
-                f"<td>{p.get(k,'') or ''}</td>" for k in keys
-            )
+        for row in rows:
+            cells = "".join(f"<td>{c}</td>" for c in row)
             tbody += f"<tr>{cells}</tr>"
         return f"""<!DOCTYPE html><html><head><meta charset='UTF-8'>
 <style>body{{font-family:Arial,sans-serif;font-size:9pt}}
@@ -1542,28 +2101,131 @@ th{{background:#4472C4;color:#fff;padding:3px 6px;text-align:left;font-size:8.5p
 td{{padding:2px 6px;border-bottom:1px solid #ddd;font-size:8.5pt}}
 tr:nth-child(even) td{{background:#f0f4f8}}
 h2{{font-size:11pt}}</style></head><body>
-<h2>{plP}</h2>
+<h2>{titel}</h2>
 <table><thead><tr>{th}</tr></thead><tbody>{tbody}</tbody></table>
 </body></html>"""
 
-    def _drucken_angebote(self):
+    def _add_raum(self):
+        self.tabs.setCurrentIndex(2)
+        self.raeume_table.add_empty_row()
+
+    def _delete_raum(self):
+        ids = self.raeume_table.get_selected_ids()
+        if not ids:
+            QMessageBox.information(self, "Hinweis", "Bitte einen oder mehrere Räume auswählen.")
+            return
+        antwort = QMessageBox.question(
+            self, "Raum löschen?",
+            f"{len(ids)} Raum/Räume wirklich löschen?\n\n"
+            "Die Zuordnung wird bei betroffenen Optionen entfernt.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if antwort != QMessageBox.StandardButton.Yes:
+            return
+        for rid in ids:
+            db.delete_raum(rid)
+        self._refresh_raumplan()
+        self._signal_gespeichert()
+
+    def _importiere_raeume(self):
+        """Öffnet den Import-Dialog für die Raumliste (CSV/xlsx/ods)."""
+        self.tabs.setCurrentIndex(2)
+        self._import("raeume")
+
+    def _export_raumliste(self):
+        """Exportiert die Raumliste so, dass die Datei beim Wiederimport
+        automatisch zum Raum-Spaltenzuordnungsfenster passt (Spaltentitel
+        „Raumname", „Kapazität", „Beschreibung"). Kopfzeile bleibt standardmäßig
+        leer, damit der Reimport die Spaltenüberschriften direkt in Zeile 1
+        findet -- wird sie befüllt, erkennt der Reimport sie wie bei den
+        Gesamtlisten automatisch und überspringt sie."""
+        # Spaltentitel = exakt die Feldlabels aus dem Raum-Import
+        felder = ie.get_raum_felder()  # [(key, label), ...]
+        headers = [label for _key, label in felder]
+        keys    = [key for key, _label in felder]
+        raeume = db.get_all_raeume()
+        rows = []
+        for raum in raeume:
+            zeile = []
+            for k in keys:
+                v = raum.get(k, "")
+                if k == "kapazitaet":
+                    v = "" if not v else str(v)
+                zeile.append(str(v or ""))
+            rows.append(zeile)
+
+        auswahl = self._spaltenauswahl_export(headers)
+        if auswahl is None:
+            return
+        kept, kopfzeile, datum_fuss = auswahl
+        headers, rows = ie.filter_spalten(headers, rows, kept)
+
+        ext_filter = "Excel (*.xlsx);;ODS (*.ods);;CSV (*.csv);;PDF (*.pdf)"
+        pfad, sel = self._save_dialog("Raumliste exportieren", "Raumliste", ext_filter)
+        if not pfad:
+            return
+        fmt = {"Excel": "xlsx", "ODS": "ods", "CSV": "csv", "PDF": "pdf"}.get(
+            (sel or "").split(" ")[0], "xlsx"
+        )
+        if not any(pfad.lower().endswith(f".{x}") for x in ("xlsx", "ods", "csv", "pdf")):
+            pfad += f".{fmt}"
+        try:
+            ie.export_gruppen(pfad, fmt, [("", headers, rows)],
+                              kopfzeile=kopfzeile, datum_fusszeile=datum_fuss)
+        except Exception as e:
+            QMessageBox.critical(self, "Exportfehler", str(e))
+
+    def _export_raumplan(self):
+        headers, rows = self.raumplan_table.export_daten()
+        auswahl = self._spaltenauswahl_export(headers)
+        if auswahl is None:
+            return
+        kept, kopfzeile, datum_fuss = auswahl
+        headers, rows = ie.filter_spalten(headers, rows, kept)
+        gruppen = [("Raumplan", headers, rows)]
+        ext_filter = "PDF (*.pdf);;Excel (*.xlsx);;ODS (*.ods);;CSV (*.csv)"
+        pfad, sel = self._save_dialog("Raumplan exportieren", "Raumplan", ext_filter)
+        if not pfad:
+            return
+        fmt = {"PDF": "pdf", "Excel": "xlsx", "ODS": "ods", "CSV": "csv"}.get(
+            (sel or "").split(" ")[0], "pdf"
+        )
+        if not any(pfad.lower().endswith(f".{x}") for x in ("pdf", "xlsx", "ods", "csv")):
+            pfad += f".{fmt}"
+        try:
+            ie.export_gruppen(pfad, fmt, gruppen, kopfzeile=kopfzeile,
+                              datum_fusszeile=datum_fuss)
+        except Exception as e:
+            QMessageBox.critical(self, "Exportfehler", str(e))
+
+    def _drucken_raumplan(self):
         from PyQt6.QtPrintSupport import QPrinter, QPrintDialog
         from PyQt6.QtGui import QTextDocument
+        headers, rows = self.raumplan_table.export_daten()
+        kept = self._spaltenauswahl(headers)
+        if kept is None:
+            return
+        headers, rows = ie.filter_spalten(headers, rows, kept)
         printer = QPrinter(QPrinter.PrinterMode.ScreenResolution)
         if QPrintDialog(printer, self).exec() != QPrintDialog.DialogCode.Accepted:
             return
         doc = QTextDocument()
-        doc.setHtml(self._build_angebote_html())
+        doc.setHtml(self._html_tabelle("Raumplan", headers, rows))
         getattr(doc, 'print')(printer)
 
-    def _druckvorschau_angebote(self):
+    def _druckvorschau_raumplan(self):
         from PyQt6.QtPrintSupport import QPrinter, QPrintPreviewDialog
         from PyQt6.QtGui import QTextDocument
+        headers, rows = self.raumplan_table.export_daten()
+        kept = self._spaltenauswahl(headers)
+        if kept is None:
+            return
+        headers, rows = ie.filter_spalten(headers, rows, kept)
         printer = QPrinter(QPrinter.PrinterMode.ScreenResolution)
         dlg = QPrintPreviewDialog(printer, self)
         def _render(p):
             doc = QTextDocument()
-            doc.setHtml(self._build_angebote_html())
+            doc.setHtml(self._html_tabelle("Raumplan", headers, rows))
             getattr(doc, 'print')(p)
         dlg.paintRequested.connect(_render)
         dlg.exec()
@@ -1656,8 +2318,9 @@ h2{{font-size:11pt}}</style></head><body>
         statistik = alg.get_statistik(ergebnis)
 
         self._refresh_teilnehmer()
+        self.raumplan_table.refresh_aus_optionen()
         self.statistik_widget.refresh(statistik)
-        self.tabs.setCurrentIndex(2)  # Statistik-Tab
+        self.tabs.setCurrentIndex(3)  # Statistik-Tab
 
         gesamt = statistik["gesamt"]
         wt = statistik["wunsch_treffer"]
@@ -1917,23 +2580,35 @@ h2{{font-size:11pt}}</style></head><body>
             return
         fmt          = dlg.get_format()
         kopfzeile    = dlg.get_kopfzeile()
-        mit_wuensch  = dlg.get_mit_wuenschen()
         seitenumbr   = dlg.get_seitenumbrueche()
         datum_fuss   = dlg.get_datum_fusszeile()
         separat      = dlg.get_separat()
         ausgabe_modus = dlg.get_ausgabe_modus()  # 'zip' oder 'ordner'
 
+        # Wünsche werden immer mitgeholt -- ob sie in der Ausgabe erscheinen,
+        # entscheidet die anschließende Feldauswahl (granularer als ein
+        # pauschaler Ein/Aus-Haken, u. a. einzelne Wunschränge abwählbar).
         if modus == "klassen":
-            gruppen = ie.get_gesamtliste_nach_klassen(mit_wuensch)
+            gruppen = ie.get_gesamtliste_nach_klassen(mit_wuenschen=True)
             vorgabe = "Gesamtliste_nach_Gruppen"
         else:
-            gruppen = ie.get_gesamtliste_nach_projekten(mit_wuensch)
+            gruppen = ie.get_gesamtliste_nach_projekten(mit_wuenschen=True)
             vorgabe = f"Gesamtliste_nach_{self._get_pl()[2]}"
+
+        # Feldauswahl: einheitlich auf alle Gruppen anwenden (gleiche Spalten je Gruppe)
+        if gruppen:
+            kept = self._spaltenauswahl(gruppen[0][1])
+            if kept is None:
+                return
+            gruppen = [
+                (name, *ie.filter_spalten(headers, rows, kept))
+                for (name, headers, rows) in gruppen
+            ]
 
         if separat:
             if ausgabe_modus == "zip":
-                pfad, _ = QFileDialog.getSaveFileName(
-                    self, "Gesamtliste exportieren (ZIP)", vorgabe + ".zip",
+                pfad, _ = self._save_dialog(
+                    "Gesamtliste exportieren (ZIP)", vorgabe + ".zip",
                     "ZIP-Archiv (*.zip)"
                 )
                 if not pfad:
@@ -1948,9 +2623,7 @@ h2{{font-size:11pt}}</style></head><body>
                 except Exception as e:
                     QMessageBox.critical(self, "Fehler beim Export", str(e))
             else:
-                ordner = QFileDialog.getExistingDirectory(
-                    self, "Zielordner für Einzeldateien wählen"
-                )
+                ordner = self._dir_dialog("Zielordner für Einzeldateien wählen")
                 if not ordner:
                     return
                 try:
@@ -1963,8 +2636,8 @@ h2{{font-size:11pt}}</style></head><body>
         else:
             ext = {"xlsx": ".xlsx", "ods": ".ods",
                    "csv": ".csv", "pdf": ".pdf"}[fmt]
-            pfad, _ = QFileDialog.getSaveFileName(
-                self, "Gesamtliste exportieren", vorgabe + ext,
+            pfad, _ = self._save_dialog(
+                "Gesamtliste exportieren", vorgabe + ext,
                 f"{fmt.upper()}-Datei (*{ext})"
             )
             if not pfad:
