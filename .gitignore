@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 *.plf
 *.db
+!beispieldaten/*.plf
 build_scripts/dist/
 build_scripts/build/
 *.spec.bak

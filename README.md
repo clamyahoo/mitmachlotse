@@ -19,7 +19,7 @@ python3 mitmachlotse.py
 
 ## Aufbau der Oberfläche
 
-### Hauptfenster — drei Tabs
+### Hauptfenster — vier Tabs
 
 Oberhalb der Tabs liegt eine globale **Suchleiste** (`Strg+F`): Eingabe
 durchsucht die Teilnehmer/innen-Tabelle spaltenübergreifend und markiert
@@ -41,7 +41,25 @@ optionale Zusatzfelder, Gruppenbereich min/max, Plätze min/max.
 Buttons: `+ Option hinzufügen`, `✗ Zeile löschen`, `Exportieren`, `Drucken`,
 `Druckvorschau`.
 
-**Tab 3 – Auswertung, Nachbearbeitung, Export**
+**Tab 3 – Raumplan**
+Räumliche und zeitliche Organisation der Optionen.
+- **Raumliste** (oben): Räume mit Name, **Kapazität** und Beschreibung anlegen
+  (`+ Raum hinzufügen` / `✗ Raum löschen`, Autospeicherung wie überall).
+  `Strg+N` legt hier einen Raum an, `Entf` löscht den markierten Raum (nur bei
+  Fokus auf der Raumliste). Buttons `Raumliste importieren` / `Raumliste
+  exportieren` erlauben den Austausch als CSV/xlsx/ods; die Exportdatei
+  (Spalten „Raumname", „Kapazität", „Beschreibung") passt beim Reimport
+  automatisch ins Spaltenzuordnungsfenster.
+- **Raumzuordnung** (unten): je Option ein **Raum** (Auswahlliste) und eine
+  **Zeit** zuordnen. Angezeigt werden zusätzlich Plätze max und aktuelle
+  Belegung. **Konflikte werden farbig markiert** und in der Hinweisspalte
+  erklärt: rot bei **Doppelbelegung** (derselbe Raum zur selben Zeit für mehrere
+  Optionen), orange bei **Kapazitätsproblemen** (Raum kleiner als Belegung bzw.
+  als die geplanten Plätze). Die Hinweise sind bewusst nur Warnungen, keine
+  Sperren. Buttons `Exportieren`, `Drucken`, `Druckvorschau` erzeugen einen
+  fertigen Raumplan (mit Feldauswahl, s. u.).
+
+**Tab 4 – Auswertung, Nachbearbeitung, Export**
 
 Dieser Tab bündelt alle Auswertungs- und Exportfunktionen:
 
@@ -123,6 +141,29 @@ Wünsche" sind alle Wunschfelder mit ⚠ markiert, da hier jedes einzelne
 Feld betroffen ist.
 Doppelklick springt zur Person im Hauptfenster (bleibt dabei offen).
 Export und Drucken direkt aus dem Fenster.
+
+---
+
+## Feldauswahl beim Drucken und Exportieren
+
+Vor **jedem** Ausdruck und **jedem** Dateiexport – Optionen, Raumplan,
+Gesamtlisten, Listenfenster und Qualitätsprüfung – erscheint eine
+**Feldauswahl**: eine Liste aller Spalten (standardmäßig alle angehakt), mit
+`Alle` / `Keine` als Schnellschalter. So lässt sich der Druckbereich bzw. der
+Dateiinhalt pro Ausgabe frei zusammenstellen. Wer alles möchte, bestätigt
+einfach mit `OK`. Die Auswahl wirkt gleichermaßen für PDF, Excel (.xlsx),
+OpenDocument (.ods), CSV und den direkten Ausdruck.
+
+## Vorkonfigurierte Speicherorte (u. a. Nextcloud/WebDAV)
+
+Unter **Datei → Speicherorte verwalten** lassen sich benannte Ziel-Ordner
+hinterlegen. Sie erscheinen anschließend beim Exportieren in der **Seitenleiste
+des Speichern-Dialogs** – für schnellen Zugriff, ohne sich durch den
+Verzeichnisbaum zu klicken. Für **Nextcloud/WebDAV** wird der lokal
+eingebundene Ordner eingetragen (Nextcloud-Desktop-Client oder eine
+Betriebssystem-Einbindung via `davs://`); ein direkter Upload mit Zugangsdaten
+findet bewusst nicht statt (keine Passwortspeicherung, keine zusätzlichen
+Abhängigkeiten).
 
 ---
 
@@ -231,7 +272,12 @@ noch eine Zier-/Titelzeile — z. B. weil die Datei mit „Gesamtliste
 exportieren" erzeugt wurde und dort Kopfzeile/Gruppenname über der Tabelle
 stehen —, wird das beim Import automatisch erkannt und übersprungen. Damit
 sind auch für Menschen aufbereitete Exportdateien direkt reimportierbar,
-ohne sie vorher manuell bereinigen zu müssen.
+ohne sie vorher manuell bereinigen zu müssen. Bei mehrteiligen Gesamtlisten
+(nach Gruppen **oder** nach Optionen) werden zusätzlich die je Abschnitt
+**wiederholten Kopfzeilen** und die **Abschnittsüberschriften** (Gruppen- bzw.
+Optionsname) mitten im Datenbereich erkannt und übersprungen — sonst
+entstünden daraus fehlerhafte Datensätze (etwa ein „Teilnehmer" namens
+„1: Holzwerkstatt").
 
 **Qualitätsprüfung nach dem Teilnehmer/innen-Import**: Nach jedem Import
 fragt die App, ob die importierten Wunscheingaben geprüft werden sollen.
@@ -303,7 +349,7 @@ es dort immer nur eine einzige Liste gibt.
 | `Strg+B` | Spaltenbezeichnungen anpassen |
 | `Strg+F` | Suche fokussieren (springt zu Tab 1) |
 | `Esc` | Suche leeren, Fokus zurück zur Tabelle |
-| `Strg+1/2/3` (auch `Alt+1/2/3`) | Zwischen den drei Tabs wechseln |
+| `Strg+1/2/3/4` (auch `Alt+1/2/3/4`) | Zwischen den vier Tabs wechseln (3 = Raumplan, 4 = Auswertung) |
 | `Strg+N` | Hinzufügen (Teilnehmer/in oder Option, je nach aktivem Tab) |
 | `Strg+I` | Teilnehmer/innen importieren |
 | `Strg+Shift+I` | Optionen importieren |
@@ -414,16 +460,16 @@ im Ordner `build_scripts/`.
 
 ```
 mitmachlotse.py          Einstiegspunkt, globales Stylesheet
-hauptfenster.py          Hauptfenster (3 Tabs), StatistikWidget, Tabellen
-dialoge.py               Alle modalen Dialoge
-database.py              SQLite-Datenbankschicht, get_label_formen()
+hauptfenster.py          Hauptfenster (4 Tabs inkl. Raumplan), StatistikWidget, Tabellen
+dialoge.py               Alle modalen Dialoge (inkl. Feldauswahl, Speicherorte)
+database.py              SQLite-Datenbankschicht (inkl. Räume, Speicherorte), get_label_formen()
 algorithmen.py           Algorithmen A/B/C (MCMF-Wrapper)
 _mcmf.py                 Min-Cost-Flow (Dijkstra + Johnson-Potentiale)
 _zuteilungsplaner.py     MCMF-basierter Zuteilungs-Solver
-importexport.py          Import (CSV/xlsx/ods) und Export (xlsx/ods/csv/pdf)
+importexport.py          Import (CSV/xlsx/ods) und Export (xlsx/ods/csv/pdf), Spaltenfilter
 listenabfragen.py        DB-Abfragen für Listen- und Qualitätsprüfungsfenster
 listenfenster.py         Nicht-modales Listenfenster
-validierung.py           Prüfung auf zulässige Wünsche
+validierung.py           Prüfung auf zulässige Wünsche und Raumkonflikte
 build_scripts/           Build-Skripte für alle Plattformen
 README.md                Diese Datei
 ```

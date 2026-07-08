@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QHeaderView, QFileDialog,
     QMessageBox, QAbstractItemView, QMenu
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtGui import QAction, QKeySequence, QPalette, QColor
 from PyQt6.QtPrintSupport import QPrinter, QPrintDialog, QPrintPreviewDialog
 from PyQt6.QtGui import QTextDocument
@@ -311,20 +311,16 @@ class ListenFenster(QDialog):
 
     def _export(self):
         from dialoge import FensterExportDialog
-        hat_wuensche = any(h.strip().lower().startswith("wunsch")
-                           for h in self._headers)
-        dlg = FensterExportDialog(hat_wuensche=hat_wuensche, parent=self)
+        dlg = FensterExportDialog(parent=self)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
 
         fmt = dlg.get_format()
-        mit_wuenschen = dlg.get_mit_wuenschen()
 
-        # Spalten filtern
-        headers, rows = ie.filter_wunsch_spalten(
-            self._headers, self._rows, mit_wuenschen
-        )
-        # Fixiert-Spalte raus (wie beim Drucken)
+        # Fixiert-Spalte raus (wie beim Drucken); Wunschspalten bleiben
+        # zunächst erhalten -- ob sie in der Ausgabe erscheinen, entscheidet
+        # die anschließende Feldauswahl.
+        headers, rows = self._headers, self._rows
         fix_idx = [i for i, h in enumerate(headers)
                    if h.strip().lower() == "fixiert"]
         if fix_idx:
@@ -332,13 +328,20 @@ class ListenFenster(QDialog):
             headers = [h for i, h in enumerate(headers) if i != fi]
             rows = [[c for i, c in enumerate(r) if i != fi] for r in rows]
 
+        # Feldauswahl (inkl. Kopfzeile, vorbelegt mit dem Fenstertitel, und
+        # „Datum in der Fußzeile")
+        auswahl = self._spaltenauswahl_export(headers, kopfzeile_vorgabe=self._titel)
+        if auswahl is None:
+            return
+        kept, kopfzeile, datum_fuss = auswahl
+        headers, rows = ie.filter_spalten(headers, rows, kept)
+
         ext_map = {"xlsx": ".xlsx", "ods": ".ods",
                    "csv": ".csv", "pdf": ".pdf"}
-        pfad, _ = QFileDialog.getSaveFileName(
-            self, "Liste exportieren",
-            os.path.join(self._last_dir, self._dateiname().replace(".txt", ext_map[fmt])),
-            f"{fmt.upper()}-Datei (*{ext_map[fmt]})"
-        )
+        start = os.path.join(self._last_dir,
+                             self._dateiname().replace(".txt", ext_map[fmt]))
+        filt = f"{fmt.upper()}-Datei (*{ext_map[fmt]})"
+        pfad = self._save_pfad("Liste exportieren", start, filt)
         if not pfad:
             return
         if not pfad.lower().endswith(ext_map[fmt]):
@@ -349,8 +352,9 @@ class ListenFenster(QDialog):
             ie.export_gruppen(
                 pfad, fmt,
                 [(self._titel, headers, rows)],
-                kopfzeile=self._titel,
-                seitenumbrueche=False
+                kopfzeile=kopfzeile,
+                seitenumbrueche=False,
+                datum_fusszeile=datum_fuss
             )
             QMessageBox.information(self, "Export erfolgreich",
                                     f"Datei gespeichert:\n{pfad}")
@@ -405,15 +409,61 @@ class ListenFenster(QDialog):
         with open(pfad, "w", encoding="utf-8") as f:
             f.write(html)
 
+    # ── Feldauswahl ──────────────────────────────────────────────────────────
+
+    def _spaltenauswahl(self, headers: list):
+        """Feldauswahl vor dem Drucken. Rückgabe: kept_indices oder None (Abbruch)."""
+        from dialoge import SpaltenauswahlDialog
+        dlg = SpaltenauswahlDialog(
+            headers, "Felder / Spalten für die Ausgabe wählen", parent=self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return None
+        return dlg.get_kept_indices()
+
+    def _spaltenauswahl_export(self, headers: list, kopfzeile_vorgabe: str = ""):
+        """Feldauswahl vor dem Export, zusätzlich mit Kopfzeile und „Datum in
+        der Fußzeile" (wie beim Gesamtlisten-Export).
+        Rückgabe: (kept_indices, kopfzeile, datum_fusszeile) oder None (Abbruch)."""
+        from dialoge import SpaltenauswahlDialog
+        dlg = SpaltenauswahlDialog(
+            headers, "Felder / Spalten für die Ausgabe wählen", parent=self,
+            mit_kopfzeile=True, kopfzeile_vorgabe=kopfzeile_vorgabe
+        )
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return None
+        return dlg.get_kept_indices(), dlg.get_kopfzeile(), dlg.get_datum_fusszeile()
+
+    def _save_pfad(self, titel: str, start: str, filt: str) -> str:
+        """Speichern-Dialog mit konfigurierten Speicherorten in der Seitenleiste.
+        Rückgabe: gewählter Pfad oder "" bei Abbruch."""
+        extra = []
+        for ort in db.get_speicherorte():
+            p = ort.get("pfad", "")
+            if p and os.path.isdir(p):
+                extra.append(QUrl.fromLocalFile(p))
+        if not extra:
+            pfad, _ = QFileDialog.getSaveFileName(self, titel, start, filt)
+            return pfad
+        dlg = QFileDialog(self, titel, start, filt)
+        dlg.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
+        dlg.setOption(QFileDialog.Option.DontUseNativeDialog, True)
+        dlg.setSidebarUrls(dlg.sidebarUrls() + extra)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return ""
+        files = dlg.selectedFiles()
+        return files[0] if files else ""
+
     # ── Druck ────────────────────────────────────────────────────────────────
 
-    def _build_html_document(self) -> str:
+    def _build_html_document(self, kept_indices=None) -> str:
         # "Fixiert"-Spalte im Druck weglassen
         druck_cols = [i for i, h in enumerate(self._headers)
                       if h.strip().lower() != "fixiert"]
         headers = [self._headers[i] for i in druck_cols]
         rows    = [[r[i] for i in druck_cols if i < len(r)]
                    for r in self._rows]
+        # Optionale Feldauswahl (nach dem Entfernen der Fixiert-Spalte)
+        headers, rows = ie.filter_spalten(headers, rows, kept_indices)
 
         parts = [f"""<!DOCTYPE html>
 <html lang="de">
@@ -444,17 +494,27 @@ class ListenFenster(QDialog):
         parts.append("</table>\n</body>\n</html>")
         return "".join(parts)
 
+    def _druck_headers(self) -> list:
+        """Spaltenüberschriften wie im Druck (ohne Fixiert-Spalte) für die Feldauswahl."""
+        return [h for h in self._headers if h.strip().lower() != "fixiert"]
+
     def _print(self):
+        kept = self._spaltenauswahl(self._druck_headers())
+        if kept is None:
+            return
         doc = QTextDocument()
-        doc.setHtml(self._build_html_document())
+        doc.setHtml(self._build_html_document(kept))
         printer = QPrinter(QPrinter.PrinterMode.HighResolution)
         dlg = QPrintDialog(printer, self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
             doc.print(printer)
 
     def _print_preview(self):
+        kept = self._spaltenauswahl(self._druck_headers())
+        if kept is None:
+            return
         doc = QTextDocument()
-        doc.setHtml(self._build_html_document())
+        doc.setHtml(self._build_html_document(kept))
         printer = QPrinter(QPrinter.PrinterMode.HighResolution)
         preview = QPrintPreviewDialog(printer, self)
         preview.paintRequested.connect(lambda p: doc.print(p))

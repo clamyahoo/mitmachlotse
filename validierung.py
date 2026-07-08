@@ -216,3 +216,81 @@ def setze_unzulaessige_wuensche_auf_null(nur_ids: list = None) -> int:
         db.update_teilnehmer(s["id"], data)
 
     return anzahl_bereinigt
+
+
+# ── Raumkonflikte ────────────────────────────────────────────────────────────
+
+def pruefe_raumkonflikte() -> dict:
+    """
+    Prüft die Raum-/Zeitzuordnung der Optionen und gibt je betroffener Option
+    einen Hinweis zurück (nur Hinweise, keine Sperre).
+
+    Rückgabe: dict  option_nummer -> {
+        "doppelbelegung": bool,   # gleicher Raum + gleiche Zeit wie andere Option(en)
+        "kapazitaet":     bool,   # Raumkapazität kleiner als Belegung/geplante Plätze
+        "text":           str,    # zusammengefasster Hinweistext für Tooltip/Spalte
+    }
+    Optionen ohne Auffälligkeit tauchen nicht im dict auf.
+    """
+    plan = db.get_raumplan()
+    ergebnis: dict = {}
+
+    # ── Doppelbelegung: gleiche (raum_id, zeit) bei mehr als einer Option ──
+    belegung: dict = {}
+    for row in plan:
+        raum_id = row.get("raum_id") or 0
+        zeit = (row.get("zeit") or "").strip()
+        if raum_id and zeit:
+            belegung.setdefault((raum_id, zeit), []).append(row)
+
+    for (_raum_id, zeit), optionen in belegung.items():
+        if len(optionen) > 1:
+            raum_name = optionen[0].get("raum_name") or "?"
+            for row in optionen:
+                andere = [str(o["nummer"]) for o in optionen
+                          if o["nummer"] != row["nummer"]]
+                eintrag = ergebnis.setdefault(
+                    row["nummer"],
+                    {"doppelbelegung": False, "kapazitaet": False, "text": ""}
+                )
+                eintrag["doppelbelegung"] = True
+                eintrag["_dopp"] = (
+                    f"Doppelbelegung: Raum „{raum_name}“ zur Zeit "
+                    f"„{zeit}“ auch bei Option {', '.join(andere)}"
+                )
+
+    # ── Kapazität: Raumkapazität < Belegung bzw. geplante Plätze (tnmax) ──
+    for row in plan:
+        kap = row.get("raum_kapazitaet")
+        if not kap or kap <= 0:
+            continue  # kein Raum zugeordnet oder Kapazität unbekannt/unbegrenzt
+        belegt = row.get("belegt") or 0
+        tnmax = row.get("tnmax") or 0
+        raum_name = row.get("raum_name") or "?"
+        meldung = None
+        if belegt > kap:
+            meldung = (f"Kapazität überschritten: {belegt} zugeteilt, "
+                       f"Raum „{raum_name}“ fasst nur {kap}")
+        elif tnmax and tnmax > kap:
+            meldung = (f"Kapazität knapp: Raum „{raum_name}“ fasst {kap}, "
+                       f"geplant sind bis zu {tnmax} Plätze")
+        if meldung:
+            eintrag = ergebnis.setdefault(
+                row["nummer"],
+                {"doppelbelegung": False, "kapazitaet": False, "text": ""}
+            )
+            eintrag["kapazitaet"] = True
+            eintrag["_kap"] = meldung
+
+    # ── Hinweistexte aus den temporären Einzelmeldungen zusammensetzen ──
+    for eintrag in ergebnis.values():
+        teile = []
+        dopp = eintrag.pop("_dopp", None)
+        kap = eintrag.pop("_kap", None)
+        if dopp:
+            teile.append("⚠ " + dopp)
+        if kap:
+            teile.append("⚠ " + kap)
+        eintrag["text"] = "\n".join(teile)
+
+    return ergebnis

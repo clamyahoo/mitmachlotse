@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (
     QGroupBox, QRadioButton, QButtonGroup, QCheckBox,
     QDialogButtonBox, QMessageBox, QScrollArea, QWidget, QSizePolicy,
     QHeaderView, QAbstractItemView, QLineEdit, QFormLayout, QStackedWidget,
-    QListWidget, QListWidgetItem, QSpinBox, QTabWidget
+    QListWidget, QListWidgetItem, QSpinBox, QTabWidget, QInputDialog
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QPalette, QColor
@@ -227,6 +227,20 @@ class PlanungsmappeEinrichtenDialog(QDialog):
                              self._spin_max_wuensche)
         layout.addWidget(wunsch_group)
 
+        # ── Optionales Zusatzfeld Raumzuordnung ──
+        raumzuordnung_group = QGroupBox(
+            "Optionales Zusatzfeld – Raumzuordnung (leer lassen = ausgeblendet)"
+        )
+        raumzuordnung_layout = QFormLayout(raumzuordnung_group)
+        raumzuordnung_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        self._raumzuordnung_extra_edit = QLineEdit()
+        self._raumzuordnung_extra_edit.setPlaceholderText("(kein Feld)")
+        self._raumzuordnung_extra_edit.setText(
+            konfig.get("raumzuordnung_extra_label", ""))
+        raumzuordnung_layout.addRow("Zusatzfeld Raumzuordnung:",
+                                    self._raumzuordnung_extra_edit)
+        layout.addWidget(raumzuordnung_group)
+
         # ── Buttons ──
         btn_row = QHBoxLayout()
         btn_neutral = QPushButton("Neutrale Bezeichnungen")
@@ -322,6 +336,7 @@ class PlanungsmappeEinrichtenDialog(QDialog):
             "projekt_extra_1_label": self._projekt_extras[0].text().strip(),
             "projekt_extra_2_label": self._projekt_extras[1].text().strip(),
             "projekt_extra_3_label": self._projekt_extras[2].text().strip(),
+            "raumzuordnung_extra_label": self._raumzuordnung_extra_edit.text().strip(),
         }
 
 
@@ -728,6 +743,11 @@ class SpaltenzuordnungDialog(QDialog):
             "stufenmax": ["stufenmax", "max", "jgst. max", f"{sl} max"],
             "tnmin":     ["tnmin", "plätze min"],
             "tnmax":     ["tnmax", "plätze max"],
+            "name":         ["raumname", "raum", "room", "name", "bezeichnung"],
+            "kapazitaet":   ["kapazität", "kapazitaet", "capacity", "plätze",
+                             "sitzplätze", "max"],
+            "beschreibung": ["beschreibung", "description", "bemerkung",
+                             "notiz", "hinweis", "ort", "lage"],
             "ganzer_name_kombiniert": [
                 "name", "ganzer name", "ganzer_name", "vollname"
             ],
@@ -764,14 +784,20 @@ class SpaltenzuordnungDialog(QDialog):
 class ImportDialog(QDialog):
     """Haupt-Importdialog: Datei wählen + Trennzeichen + Zuordnung."""
 
-    def __init__(self, modus: str, parent=None):
-        """modus: 'schueler' oder 'projekte'"""
+    def __init__(self, modus: str, parent=None, vorbelegter_pfad: str = None):
+        """
+        modus: 'schueler', 'projekte' oder 'raeume'
+        vorbelegter_pfad: optional bereits gewählte Datei (z. B. Beispieldaten) --
+            erspart den Klick auf "Durchsuchen", bleibt aber über den Button änderbar.
+        """
         super().__init__(parent)
         self.modus = modus
-        self.setWindowTitle(
-            "Teilnehmer/innen importieren" if modus == "schueler"
-            else "Optionen / Angebote importieren"
-        )
+        titel = {
+            "schueler": "Teilnehmer/innen importieren",
+            "projekte": "Optionen / Angebote importieren",
+            "raeume":   "Raumliste importieren",
+        }.get(modus, "Importieren")
+        self.setWindowTitle(titel)
         self.setMinimumWidth(500)
         self._headers = []
         self._rows = []
@@ -829,6 +855,10 @@ class ImportDialog(QDialog):
 
         # Temporäre Merge-Datei in jedem Fall aufräumen (OK, Abbrechen, X)
         self.finished.connect(self._cleanup_temp)
+
+        if vorbelegter_pfad:
+            self._filepath = vorbelegter_pfad
+            self.lbl_file.setText(vorbelegter_pfad)
 
     def _cleanup_temp(self, *_args):
         if self._merge_temp_path and os.path.exists(self._merge_temp_path):
@@ -983,8 +1013,12 @@ class ImportDialog(QDialog):
             except Exception:
                 pass  # Fehler beim Vorab-Lesen → ignorieren, normal weitermachen
 
-        app_felder = (ie.get_schueler_felder() if self.modus == "schueler"
-                      else ie.get_projekt_felder())
+        if self.modus == "schueler":
+            app_felder = ie.get_schueler_felder()
+        elif self.modus == "raeume":
+            app_felder = ie.get_raum_felder()
+        else:
+            app_felder = ie.get_projekt_felder()
 
         # Header-Checkbox und Vorschau befinden sich jetzt im SpaltenzuordnungDialog
         if is_csv:
@@ -1021,6 +1055,12 @@ class ImportDialog(QDialog):
                 )
                 if antwort == QMessageBox.StandardButton.Yes:
                     self._qualitaetspruefung_nach_import(importierte_ids)
+            elif self.modus == "raeume":
+                ie.import_raeume(headers, rows, mapping, append)
+                QMessageBox.information(
+                    self, "Import erfolgreich",
+                    f"{len(rows)} Räume wurden importiert."
+                )
             else:
                 self._pruefe_leitungsspalte(headers, mapping)
                 ie.import_projekte(headers, rows, mapping, append)
@@ -1933,15 +1973,121 @@ class EinrichtungsassistentDialog(QDialog):
         status_lbl.setStyleSheet("color: green;")
 
 
+class SpaltenauswahlGroup(QGroupBox):
+    """
+    Wiederverwendbarer Baustein: Checkbox-Liste aller Spaltenüberschriften,
+    zum Einbetten in Export-Dialoge. Standardmäßig alles ausgewählt (oder gemäß
+    übergebener Vorauswahl). get_kept_indices() liefert die gewählten
+    Spaltenindizes in Originalreihenfolge.
+    """
+
+    def __init__(self, headers: list, vorauswahl: list = None, parent=None):
+        super().__init__("Felder / Spalten für die Ausgabe", parent)
+        self._checks = []
+        layout = QVBoxLayout(self)
+
+        btn_row = QHBoxLayout()
+        btn_alle = QPushButton("Alle")
+        btn_keine = QPushButton("Keine")
+        btn_alle.clicked.connect(lambda: self._alle_setzen(True))
+        btn_keine.clicked.connect(lambda: self._alle_setzen(False))
+        btn_row.addWidget(btn_alle)
+        btn_row.addWidget(btn_keine)
+        btn_row.addStretch()
+        layout.addLayout(btn_row)
+
+        # Bei vielen Spalten scrollbar halten
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        inner = QWidget()
+        inner_layout = QVBoxLayout(inner)
+        for i, h in enumerate(headers):
+            cb = QCheckBox(h if h.strip() else f"Spalte {i + 1}")
+            checked = (vorauswahl is None) or (i in vorauswahl)
+            cb.setChecked(checked)
+            inner_layout.addWidget(cb)
+            self._checks.append(cb)
+        inner_layout.addStretch()
+        scroll.setWidget(inner)
+        scroll.setMinimumHeight(min(220, 40 + 24 * max(1, len(headers))))
+        layout.addWidget(scroll)
+
+    def _alle_setzen(self, zustand: bool):
+        for cb in self._checks:
+            cb.setChecked(zustand)
+
+    def get_kept_indices(self) -> list:
+        return [i for i, cb in enumerate(self._checks) if cb.isChecked()]
+
+
+class SpaltenauswahlDialog(QDialog):
+    """
+    Dünner Dialog um SpaltenauswahlGroup — für Wege, die bisher keinen eigenen
+    Dialog haben (v. a. Drucken). Rückgabe über get_kept_indices().
+
+    mit_kopfzeile=True blendet zusätzlich Kopfzeile + „Datum in der
+    Fußzeile" ein (wie im GesamtExportDialog) — nur sinnvoll für echte
+    Datei-Exporte (export_gruppen), nicht für reine Druckwege.
+    """
+
+    def __init__(self, headers: list, titel: str = "Felder auswählen",
+                 vorauswahl: list = None, parent=None,
+                 mit_kopfzeile: bool = False, kopfzeile_vorgabe: str = "",
+                 datum_vorgabe: bool = False):
+        super().__init__(parent)
+        self.setWindowTitle(titel)
+        self.setMinimumWidth(340)
+        layout = QVBoxLayout(self)
+        self._mit_kopfzeile = mit_kopfzeile
+
+        if mit_kopfzeile:
+            kz_group = QGroupBox("Kopfzeile (z. B. Veranstaltungsname, Datum)")
+            kz_layout = QVBoxLayout(kz_group)
+            self._edit_kopfzeile = QLineEdit()
+            self._edit_kopfzeile.setText(kopfzeile_vorgabe)
+            kz_layout.addWidget(self._edit_kopfzeile)
+            layout.addWidget(kz_group)
+
+            self._cb_datum = QCheckBox("Datum in der Fußzeile (PDF und xlsx)")
+            self._cb_datum.setChecked(datum_vorgabe)
+            self._cb_datum.setToolTip(
+                "PDF: Datum erscheint links unten auf jeder Seite.\n"
+                "Excel (.xlsx): Datum als Druckfußzeile (sichtbar beim Drucken\n"
+                "  oder beim PDF-Export direkt aus Excel/LibreOffice).\n"
+                "ODS: Datum in der Seitenfußzeile derzeit nicht verfügbar.\n"
+                "CSV: kein Effekt."
+            )
+            layout.addWidget(self._cb_datum)
+
+        self._group = SpaltenauswahlGroup(headers, vorauswahl, self)
+        layout.addWidget(self._group)
+        bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok |
+                              QDialogButtonBox.StandardButton.Cancel)
+        bb.accepted.connect(self.accept)
+        bb.rejected.connect(self.reject)
+        layout.addWidget(bb)
+
+    def get_kept_indices(self) -> list:
+        return self._group.get_kept_indices()
+
+    def get_kopfzeile(self) -> str:
+        return self._edit_kopfzeile.text().strip() if self._mit_kopfzeile else ""
+
+    def get_datum_fusszeile(self) -> bool:
+        return self._cb_datum.isChecked() if self._mit_kopfzeile else False
+
+
 class FensterExportDialog(QDialog):
-    """Export-Dialog für Fensterlisten: Format + mit/ohne Wünsche."""
+    """Export-Dialog für Fensterlisten: nur Format -- welche Spalten (u. a.
+    Wunschränge) in die Ausgabe kommen, entscheidet die anschließende
+    Feldauswahl (granularer als ein pauschaler Ein/Aus-Haken)."""
 
     FORMATE = [("Excel-Datei (.xlsx)", "xlsx"),
                ("ODS-Tabelle (.ods)",  "ods"),
                ("CSV-Datei (.csv)",    "csv"),
                ("PDF-Datei (.pdf)",    "pdf")]
 
-    def __init__(self, hat_wuensche: bool = True, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Liste exportieren")
         self.setMinimumWidth(340)
@@ -1960,12 +2106,6 @@ class FensterExportDialog(QDialog):
         self._fmt_radios[0][0].setChecked(True)
         layout.addWidget(fmt_group)
 
-        # Optionen
-        self._cb_wuensche = QCheckBox("Wünsche mit einbeziehen")
-        self._cb_wuensche.setChecked(True)
-        self._cb_wuensche.setEnabled(hat_wuensche)
-        layout.addWidget(self._cb_wuensche)
-
         bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok |
                               QDialogButtonBox.StandardButton.Cancel)
         bb.accepted.connect(self.accept)
@@ -1977,9 +2117,6 @@ class FensterExportDialog(QDialog):
             if rb.isChecked():
                 return key
         return "xlsx"
-
-    def get_mit_wuenschen(self) -> bool:
-        return self._cb_wuensche.isChecked()
 
 
 class GesamtExportDialog(QDialog):
@@ -2019,8 +2156,6 @@ class GesamtExportDialog(QDialog):
         # Optionen
         opt_group = QGroupBox("Optionen")
         opt_layout = QVBoxLayout(opt_group)
-        self._cb_wuensche = QCheckBox("Wünsche mit einbeziehen")
-        self._cb_wuensche.setChecked(True)
         self._cb_seitenumbrueche = QCheckBox(
             "Seitenumbruch nach jeder Gruppe")
         self._cb_seitenumbrueche.setChecked(True)
@@ -2033,7 +2168,6 @@ class GesamtExportDialog(QDialog):
             "ODS: Datum in der Seitenfußzeile derzeit nicht verfügbar.\n"
             "CSV: kein Effekt."
         )
-        opt_layout.addWidget(self._cb_wuensche)
         opt_layout.addWidget(self._cb_seitenumbrueche)
         opt_layout.addWidget(self._cb_datum)
 
@@ -2078,9 +2212,6 @@ class GesamtExportDialog(QDialog):
 
     def get_kopfzeile(self) -> str:
         return self._edit_kopfzeile.text().strip()
-
-    def get_mit_wuenschen(self) -> bool:
-        return self._cb_wuensche.isChecked()
 
     def get_seitenumbrueche(self) -> bool:
         return self._cb_seitenumbrueche.isChecked()
@@ -2546,19 +2677,48 @@ class QualitaetspruefungDialog(QDialog):
         if 0 <= row < len(self._row_ids):
             self.person_angefordert.emit(self._row_ids[row])
 
-    def _build_print_html(self) -> str:
-        wunsch_headers = "".join(
-            f"<th>W{i}</th>" for i in range(1, self._max_w + 1)
-        )
-        rows_html = ""
+    def _qp_headers_rows(self):
+        """Volle (headers, rows) der Qualitätsprüfungstabelle für Export/Druck."""
+        wunsch_headers = [f"W{i}" for i in range(1, self._max_w + 1)]
+        col_headers = ["Kategorie", "Name", "Gruppe"] + wunsch_headers + ["Details"]
+        rows = []
         for r in range(self._table.rowCount()):
-            items = [self._table.item(r, c) for c in range(self._table.columnCount())]
-            vals  = [it.text() if it else "" for it in items]
-            kat   = vals[0] if vals else ""
+            row = [self._table.item(r, c).text() if self._table.item(r, c) else ""
+                   for c in range(self._table.columnCount())]
+            rows.append(row)
+        return col_headers, rows
+
+    def _spaltenauswahl(self, headers: list):
+        """Feldauswahl vor dem Drucken. Rückgabe: kept_indices oder None (Abbruch)."""
+        dlg = SpaltenauswahlDialog(
+            headers, "Felder / Spalten für die Ausgabe wählen", parent=self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return None
+        return dlg.get_kept_indices()
+
+    def _spaltenauswahl_export(self, headers: list):
+        """Feldauswahl vor dem Export, zusätzlich mit Kopfzeile und „Datum in
+        der Fußzeile" (wie beim Gesamtlisten-Export).
+        Rückgabe: (kept_indices, kopfzeile, datum_fusszeile) oder None (Abbruch)."""
+        dlg = SpaltenauswahlDialog(
+            headers, "Felder / Spalten für die Ausgabe wählen", parent=self,
+            mit_kopfzeile=True
+        )
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return None
+        return dlg.get_kept_indices(), dlg.get_kopfzeile(), dlg.get_datum_fusszeile()
+
+    def _build_print_html(self, kept_indices=None) -> str:
+        headers, rows = self._qp_headers_rows()
+        # Kategorie (für Zeilenfarbe) VOR dem Filtern merken
+        kategorien = [row[0] if row else "" for row in rows]
+        headers, rows = ie.filter_spalten(headers, rows, kept_indices)
+        th = "".join(f"<th>{h}</th>" for h in headers)
+        rows_html = ""
+        for kat, row in zip(kategorien, rows):
             farbe = "#c0392b" if kat.startswith("⚠") else "#222"
-            cells = "".join(f"<td>{v}</td>" for v in vals)
+            cells = "".join(f"<td>{v}</td>" for v in row)
             rows_html += f"<tr style='color:{farbe}'>{cells}</tr>"
-        wunsch_th = "".join(f"<th>W{i}</th>" for i in range(1, self._max_w + 1))
         return f"""<!DOCTYPE html><html><head><meta charset='UTF-8'>
 <style>body{{font-family:Arial,sans-serif;font-size:8pt}}
 table{{border-collapse:collapse;width:100%}}
@@ -2567,35 +2727,45 @@ td{{padding:2px 5px;border-bottom:1px solid #ddd;font-size:7.5pt}}
 tr:nth-child(even) td{{background:#f8f8f8}}
 h2{{font-size:11pt;margin-bottom:3pt}}</style></head><body>
 <h2>Qualitätsprüfung Wunscheingaben</h2>
-<table><thead><tr>
-<th>Kategorie</th><th>Name</th><th>Gruppe</th>{wunsch_th}<th>Details</th>
-</tr></thead><tbody>{rows_html}</tbody></table></body></html>"""
+<table><thead><tr>{th}</tr></thead><tbody>{rows_html}</tbody></table></body></html>"""
 
     def _drucken(self):
         from PyQt6.QtPrintSupport import QPrinter, QPrintDialog
         from PyQt6.QtGui import QTextDocument
+        kept = self._spaltenauswahl(self._qp_headers_rows()[0])
+        if kept is None:
+            return
         printer = QPrinter(QPrinter.PrinterMode.ScreenResolution)
         dlg = QPrintDialog(printer, self)
         if dlg.exec() != QPrintDialog.DialogCode.Accepted:
             return
         doc = QTextDocument()
-        doc.setHtml(self._build_print_html())
+        doc.setHtml(self._build_print_html(kept))
         getattr(doc, 'print')(printer)
 
     def _druckvorschau(self):
         from PyQt6.QtPrintSupport import QPrinter, QPrintPreviewDialog
         from PyQt6.QtGui import QTextDocument
+        kept = self._spaltenauswahl(self._qp_headers_rows()[0])
+        if kept is None:
+            return
         printer = QPrinter(QPrinter.PrinterMode.ScreenResolution)
         dlg = QPrintPreviewDialog(printer, self)
         def _render(p):
             doc = QTextDocument()
-            doc.setHtml(self._build_print_html())
+            doc.setHtml(self._build_print_html(kept))
             getattr(doc, 'print')(p)
         dlg.paintRequested.connect(_render)
         dlg.exec()
 
     def _exportieren(self):
         from PyQt6.QtWidgets import QFileDialog
+        col_headers, rows = self._qp_headers_rows()
+        auswahl = self._spaltenauswahl_export(col_headers)
+        if auswahl is None:
+            return
+        kept, kopfzeile, datum_fuss = auswahl
+        col_headers, rows = ie.filter_spalten(col_headers, rows, kept)
         pfad, _ = QFileDialog.getSaveFileName(
             self, "Qualitätsprüfung exportieren",
             "Qualitaetspruefung.pdf",
@@ -2603,28 +2773,97 @@ h2{{font-size:11pt;margin-bottom:3pt}}</style></head><body>
         )
         if not pfad:
             return
-        # Tabelleninhalt als Gruppen aufbereiten
-        wunsch_headers = [f"W{i}" for i in range(1, self._max_w + 1)]
-        col_headers = ["Kategorie", "Name", "Gruppe"] + wunsch_headers + ["Details"]
-        rows = []
-        for r in range(self._table.rowCount()):
-            row = [self._table.item(r, c).text() if self._table.item(r, c) else ""
-                   for c in range(self._table.columnCount())]
-            rows.append(row)
         gruppen = [("Qualitätsprüfung Wunscheingaben", col_headers, rows)]
-        import importexport as _ie
         ext = pfad.rsplit(".", 1)[-1].lower() if "." in pfad else "pdf"
         if ext not in ("pdf", "xlsx", "ods", "csv"):
             ext = "pdf"
             pfad += ".pdf"
         try:
-            _ie.export_gruppen(pfad, ext, gruppen, kopfzeile="", datum_fusszeile=False)
+            ie.export_gruppen(pfad, ext, gruppen, kopfzeile=kopfzeile,
+                              datum_fusszeile=datum_fuss)
             from PyQt6.QtWidgets import QMessageBox
             QMessageBox.information(self, "Export erfolgreich",
                                     f"Gespeichert:\n{pfad}")
         except Exception as e:
             from PyQt6.QtWidgets import QMessageBox
             QMessageBox.critical(self, "Exportfehler", str(e))
+
+
+class SpeicherorteDialog(QDialog):
+    """
+    Verwaltung vorkonfigurierter Export-Speicherorte (benannte Ordner).
+    Für Nextcloud/WebDAV wird der lokal eingebundene Sync-Ordner
+    (Nextcloud-Client) bzw. ein OS-Mount (davs://) als Ordner eingetragen —
+    ein direkter Upload mit Zugangsdaten findet bewusst nicht statt.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Speicherorte verwalten")
+        self.setMinimumWidth(480)
+        layout = QVBoxLayout(self)
+
+        hinweis = QLabel(
+            "Hier hinterlegte Ordner erscheinen beim Exportieren in der "
+            "Seitenleiste des Speichern-Dialogs — für schnellen Zugriff.\n\n"
+            "Für Nextcloud/WebDAV den lokal eingebundenen Ordner eintragen "
+            "(Nextcloud-Desktop-Client oder Betriebssystem-Einbindung via "
+            "davs://). Ein direkter Upload mit Login erfolgt nicht."
+        )
+        hinweis.setWordWrap(True)
+        hinweis.setStyleSheet("color: #555;")
+        layout.addWidget(hinweis)
+
+        self._liste = QListWidget()
+        layout.addWidget(self._liste)
+        for ort in db.get_speicherorte():
+            self._add_item(ort["name"], ort["pfad"])
+
+        btn_row = QHBoxLayout()
+        btn_add = QPushButton("+ Hinzufügen")
+        btn_add.clicked.connect(self._hinzufuegen)
+        btn_del = QPushButton("✗ Entfernen")
+        btn_del.clicked.connect(self._entfernen)
+        btn_row.addWidget(btn_add)
+        btn_row.addWidget(btn_del)
+        btn_row.addStretch()
+        layout.addLayout(btn_row)
+
+        bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Save |
+                              QDialogButtonBox.StandardButton.Cancel)
+        bb.accepted.connect(self._speichern_und_schliessen)
+        bb.rejected.connect(self.reject)
+        layout.addWidget(bb)
+
+    def _add_item(self, name: str, pfad: str):
+        item = QListWidgetItem(f"{name}  —  {pfad}")
+        item.setData(Qt.ItemDataRole.UserRole, {"name": name, "pfad": pfad})
+        self._liste.addItem(item)
+
+    def _hinzufuegen(self):
+        ordner = QFileDialog.getExistingDirectory(self, "Ordner als Speicherort wählen")
+        if not ordner:
+            return
+        import os
+        vorschlag = os.path.basename(ordner.rstrip("/")) or ordner
+        name, ok = QInputDialog.getText(
+            self, "Name des Speicherorts",
+            "Anzeigename:", text=vorschlag
+        )
+        if not ok or not name.strip():
+            return
+        self._add_item(name.strip(), ordner)
+
+    def _entfernen(self):
+        for item in self._liste.selectedItems():
+            self._liste.takeItem(self._liste.row(item))
+
+    def _speichern_und_schliessen(self):
+        orte = []
+        for i in range(self._liste.count()):
+            orte.append(self._liste.item(i).data(Qt.ItemDataRole.UserRole))
+        db.set_speicherorte(orte)
+        self.accept()
 
 
 class TabellenAssistentDialog(QDialog):

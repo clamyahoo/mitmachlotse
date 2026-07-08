@@ -4,6 +4,7 @@ cd "$(dirname "$0")/.."
 VER=1.0.0; APP=projekttage-verwaltung; BUILD=/tmp/deb_build/${APP}_${VER}
 rm -rf /tmp/deb_build && mkdir -p $BUILD/{DEBIAN,opt/projekttage,usr/bin,usr/share/{applications,mime/packages}}
 cp *.py _mcmf.py _zuteilungsplaner.py requirements.txt $BUILD/opt/projekttage/ 2>/dev/null || true
+cp -r beispieldaten $BUILD/opt/projekttage/ 2>/dev/null || true
 cat > $BUILD/DEBIAN/control << CTRL
 Package: $APP
 Version: $VER

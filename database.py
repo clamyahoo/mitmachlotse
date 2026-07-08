@@ -23,6 +23,8 @@ FELDKONFIG_DEFAULTS = {
     "projekt_extra_1_label": "",   # Optionale Zusatzfelder Optionen
     "projekt_extra_2_label": "",
     "projekt_extra_3_label": "",
+    "raumzuordnung_extra_label": "",  # Optionales Zusatzfeld Raumzuordnung
+    "export_speicherorte":  "",   # JSON-Liste [{"name":..., "pfad":...}]
 }
 
 _PLURALE = {
@@ -188,6 +190,30 @@ def init_db():
         if col not in spalten_p2:
             c.execute(f"ALTER TABLE projekte ADD COLUMN {col} TEXT DEFAULT {default}")
 
+    # ── Räume ─────────────────────────────────────────────────────────────────
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS raeume (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            name         TEXT NOT NULL DEFAULT '-',
+            kapazitaet   INTEGER DEFAULT 0,   -- 0 = unbekannt/unbegrenzt
+            beschreibung TEXT DEFAULT ''
+        )
+    """)
+
+    # ── Migration: Raum-/Zeitzuordnung in projekte ────────────────────────────
+    # Referenz über raeume.id (stabil) -- NICHT über den Raumnamen. raum_id/zeit
+    # werden bewusst nicht von upsert_projekt / renumber_projekte_und_insert
+    # angefasst, damit Bearbeitungen im Optionen-Tab bzw. das Neunummerieren die
+    # Raumzuordnung nicht überschreiben.
+    c.execute("PRAGMA table_info(projekte)")
+    spalten_p3 = [row[1] for row in c.fetchall()]
+    if "raum_id" not in spalten_p3:
+        c.execute("ALTER TABLE projekte ADD COLUMN raum_id INTEGER DEFAULT 0")
+    if "zeit" not in spalten_p3:
+        c.execute("ALTER TABLE projekte ADD COLUMN zeit TEXT DEFAULT ''")
+    if "raumzuordnung_extra" not in spalten_p3:
+        c.execute("ALTER TABLE projekte ADD COLUMN raumzuordnung_extra TEXT DEFAULT ''")
+
     # ── Feldkonfiguration ─────────────────────────────────────────────────────
     c.execute("""
         CREATE TABLE IF NOT EXISTS feldkonfiguration (
@@ -349,6 +375,106 @@ def loesche_leitung_daten():
     conn.execute("UPDATE projekte SET leitung = ''")
     conn.commit()
     conn.close()
+
+
+# ── Räume ───────────────────────────────────────────────────────────────────
+
+def get_all_raeume():
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT * FROM raeume ORDER BY name COLLATE NOCASE"
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def upsert_raum(data: dict) -> int:
+    """Fügt einen Raum ein (ohne id) oder aktualisiert ihn (mit id).
+    Gibt die id des Raums zurück."""
+    conn = get_connection()
+    try:
+        if data.get("id"):
+            conn.execute("""
+                UPDATE raeume
+                   SET name = :name, kapazitaet = :kapazitaet,
+                       beschreibung = :beschreibung
+                 WHERE id = :id
+            """, {
+                "id":           data["id"],
+                "name":         data.get("name", "-") or "-",
+                "kapazitaet":   int(data.get("kapazitaet", 0) or 0),
+                "beschreibung": data.get("beschreibung", ""),
+            })
+            raum_id = data["id"]
+        else:
+            cur = conn.execute("""
+                INSERT INTO raeume (name, kapazitaet, beschreibung)
+                VALUES (:name, :kapazitaet, :beschreibung)
+            """, {
+                "name":         data.get("name", "-") or "-",
+                "kapazitaet":   int(data.get("kapazitaet", 0) or 0),
+                "beschreibung": data.get("beschreibung", ""),
+            })
+            raum_id = cur.lastrowid
+        conn.commit()
+        return raum_id
+    finally:
+        conn.close()
+
+
+def delete_raum(raum_id: int):
+    """Löscht einen Raum und entfernt seine Zuordnung bei allen Optionen."""
+    conn = get_connection()
+    conn.execute("DELETE FROM raeume WHERE id = ?", (raum_id,))
+    conn.execute("UPDATE projekte SET raum_id = 0 WHERE raum_id = ?", (raum_id,))
+    conn.commit()
+    conn.close()
+
+
+def set_raum_zeit_for_projekt(nummer: int, raum_id: int, zeit: str):
+    """Speichert Raum + Zeit einer Option, ohne die übrigen Optionsfelder
+    anzufassen (bewusst getrennt von upsert_projekt)."""
+    conn = get_connection()
+    conn.execute(
+        "UPDATE projekte SET raum_id = ?, zeit = ? WHERE nummer = ?",
+        (int(raum_id or 0), zeit or "", nummer)
+    )
+    conn.commit()
+    conn.close()
+
+
+def set_raumzuordnung_extra(nummer: int, wert: str):
+    """Speichert das optionale Zusatzfeld der Raumzuordnung einer Option,
+    ohne die übrigen Optionsfelder anzufassen (bewusst getrennt von
+    upsert_projekt, analog zu set_raum_zeit_for_projekt)."""
+    conn = get_connection()
+    conn.execute(
+        "UPDATE projekte SET raumzuordnung_extra = ? WHERE nummer = ?",
+        (wert or "", nummer)
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_raumplan():
+    """Gibt je Option eine Zeile für den Raumplan zurück:
+    Nr., Optionsname, Leitung, Raum (Name), Kapazität, Zeit,
+    Zusatzfeld, Plätze max, aktuell belegt."""
+    conn = get_connection()
+    rows = conn.execute("""
+        SELECT p.nummer, p.projektname, p.leitung, p.raum_id, p.zeit,
+               p.raumzuordnung_extra,
+               p.tnmin, p.tnmax,
+               r.name       AS raum_name,
+               r.kapazitaet AS raum_kapazitaet,
+               (SELECT COUNT(*) FROM teilnehmer t WHERE t.projekt = p.nummer)
+                            AS belegt
+        FROM projekte p
+        LEFT JOIN raeume r ON r.id = p.raum_id
+        ORDER BY p.nummer
+    """).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 # ── Schüler ─────────────────────────────────────────────────────────────────
@@ -585,3 +711,34 @@ def set_feldkonfig(konfig: dict):
         """, (key, val))
     conn.commit()
     conn.close()
+
+
+# ── Vorkonfigurierte Speicherorte ────────────────────────────────────────────
+
+def get_speicherorte() -> list:
+    """Gibt die konfigurierten Export-Speicherorte als Liste von
+    {"name":..., "pfad":...}-Dicts zurück (leer bei Fehler/keine)."""
+    import json
+    konfig = get_feldkonfig()
+    roh = konfig.get("export_speicherorte", "") or ""
+    if not roh.strip():
+        return []
+    try:
+        daten = json.loads(roh)
+        if isinstance(daten, list):
+            return [d for d in daten
+                    if isinstance(d, dict) and d.get("name") and d.get("pfad")]
+    except (ValueError, TypeError):
+        pass
+    return []
+
+
+def set_speicherorte(orte: list):
+    """Speichert die Export-Speicherorte (Liste von {"name","pfad"}) als JSON."""
+    import json
+    bereinigt = [
+        {"name": str(o.get("name", "")).strip(), "pfad": str(o.get("pfad", "")).strip()}
+        for o in orte
+        if o.get("name") and o.get("pfad")
+    ]
+    set_feldkonfig({"export_speicherorte": json.dumps(bereinigt, ensure_ascii=False)})
