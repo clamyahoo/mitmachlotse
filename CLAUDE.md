@@ -110,14 +110,22 @@ in the save dialogs, not as direct WebDAV uploads.
 
 The **Nachbearbeitungsmodus** ("Einteilung → Bearbeitungsmodus Ein/Aus") snapshots the
 current assignment into `teilnehmer.projekt_baseline` and sets the `bearbeitungsmodus_aktiv`
-feldkonfig flag. While active, `database.zuteilung_anzeige(s)` returns a `Geaendert` (str
-subclass) marker `"old̶ → new"` when a person's `projekt` differs from its baseline, and
-`get_projektteilnehmerliste` appends `Geist`-marked (struck-through) rows for people who
-left an option. The markers are `str` subclasses, so they flow unchanged through
-`filter_spalten`/CSV/Qt items; renderers additionally `isinstance`-check them to apply the
-`HERVORHEBUNG_*_HEX` background color (screen, HTML/PDF via `_html_gruppen`, xlsx, ods; CSV
-keeps only the Unicode strike-through). Turning the mode off clears all baselines. The mode
-never affects the algorithm or room assignment — only display/export.
+feldkonfig flag. Both live in the `.plf` (which *is* the SQLite DB), so the mode and its
+baselines persist across save/load — reopening a planning file resumes exactly where it was
+left (`init_db` uses `INSERT OR IGNORE`, so the stored flag survives; `_open_db → _refresh_all
+→ _sync_bearbeitungsmodus_menu` restores the UI state). While active,
+`database.zuteilung_anzeige(s)` returns a `Geaendert` (str subclass) marker `"old̶ → new"`
+when a person's `projekt` differs from its baseline. `get_projektteilnehmerliste` shows both
+sides of every move: people who **left** an option appear as appended `Geist`-marked
+(grey, struck-through) rows, and people who **arrived** are highlighted inline as
+`Geaendert` (yellow) rows whose "Wunschrang erhalten" cell notes their origin
+("… · neu (vorher: N)"). `listenabfragen.get_aenderungsuebersicht()` backs the
+"Einteilung → Übersicht der Änderungen" list window, which lists every reassigned
+participant (Vorher/Jetzt/rank) at once. The markers are `str` subclasses, so they flow
+unchanged through `filter_spalten`/CSV/Qt items; renderers additionally `isinstance`-check
+them to apply the `HERVORHEBUNG_*_HEX` background color (screen, HTML/PDF via `_html_gruppen`,
+xlsx, ods; CSV keeps only the Unicode strike-through). Turning the mode off clears all
+baselines. The mode never affects the algorithm or room assignment — only display/export.
 
 ### Import/export (`importexport.py`)
 

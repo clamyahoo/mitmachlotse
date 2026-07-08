@@ -356,15 +356,24 @@ gemacht — ohne den Algorithmus oder die Raumzuteilung zu beeinflussen:
   Gesamtliste-Export nach Gruppen) zeigt die Zuteilungsspalte bei geänderten
   Personen die **alte Nummer durchgestrichen → neue Nummer** und ist farblich
   hervorgehoben.
-- In den **Teilnehmerlisten einer Option** erscheinen Personen, die zur
-  Basis-Zeit dort waren, jetzt aber woanders zugeteilt sind, **durchgestrichen
-  am Ende der Liste** als Hinweis („war hier"). Sie zählen nicht zur aktuellen
-  Teilnehmerzahl.
+- In den **Teilnehmerlisten einer Option** wird jede Umverteilung von beiden
+  Seiten sichtbar: Personen, die zur Basis-Zeit dort waren, jetzt aber woanders
+  zugeteilt sind, erscheinen **durchgestrichen am Ende der Liste** als Hinweis
+  („war hier"); **neu hinzugekommene** Personen sind **gelb hervorgehoben** und
+  tragen im Feld „Wunschrang erhalten" den Vermerk „… · neu (vorher: N)", so
+  dass man sofort sieht, wer neu ist und woher er/sie kommt. Nur die
+  durchgestrichenen Abgänge zählen nicht zur aktuellen Teilnehmerzahl.
+- Über **Einteilung → Übersicht der Änderungen** öffnet sich eine Liste, die
+  **alle umverteilten Teilnehmer/innen auf einen Blick** zeigt (Name, Gruppe,
+  Vorher, Jetzt, erhaltener Wunschrang) — bequem druck- und exportierbar.
 
 Die Hervorhebung erscheint einheitlich am Bildschirm, im Druck und in allen
 Exportformaten (bei CSV mangels Formatierung nur die Durchstreichung als
-Textzeichen, ohne Farbe). **Bearbeitungsmodus Aus** macht den aktuellen Stand
-endgültig fest: alle Markierungen und durchgestrichenen Einträge verschwinden.
+Textzeichen, ohne Farbe). Der Bearbeitungsmodus wird **mit der Planungsmappe
+gespeichert**: Beim erneuten Öffnen der Datei ist er wieder genau im selben
+Zustand wie zuvor (inkl. Basis-Stand). **Bearbeitungsmodus Aus** macht den
+aktuellen Stand endgültig fest: alle Markierungen und durchgestrichenen
+Einträge verschwinden.
 
 ---
 

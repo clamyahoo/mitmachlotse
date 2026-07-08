@@ -1486,6 +1486,10 @@ class MainWindow(QMainWindow):
         self.a_bearbeitungsmodus.triggered.connect(self._toggle_bearbeitungsmodus)
         m_einteilen.addAction(self.a_bearbeitungsmodus)
 
+        self.a_aenderungsuebersicht = QAction("Übersicht der Änderungen", self)
+        self.a_aenderungsuebersicht.triggered.connect(self._zeige_aenderungsuebersicht)
+        m_einteilen.addAction(self.a_aenderungsuebersicht)
+
         # Hinweis: Die feste Zuweisung einzelner Teilnehmer/innen erfolgt
         # über die Schaltflächen "Projekt zuteilen" und
         # "✗ Fixierung aufheben" direkt über der Schülertabelle
@@ -2735,6 +2739,30 @@ h2{{font-size:11pt}}</style></head><body>
             self.statusBar().showMessage("Bearbeitungsmodus aktiv.", 4000)
         self._sync_bearbeitungsmodus_menu()
         self._refresh_all()
+
+    def _zeige_aenderungsuebersicht(self):
+        """Einteilung → Übersicht der Änderungen: alle im Nachbearbeitungsmodus
+        umverteilten Teilnehmer/innen auf einen Blick."""
+        if not db.ist_bearbeitungsmodus_aktiv():
+            QMessageBox.information(
+                self, "Übersicht der Änderungen",
+                "Der Bearbeitungsmodus ist nicht aktiv.\n\n"
+                "Diese Übersicht zeigt alle Umverteilungen, die seit dem "
+                "Einschalten des Bearbeitungsmodus vorgenommen wurden. "
+                "Schalten Sie ihn zuerst ein (Einteilung → Bearbeitungsmodus Ein)."
+            )
+            return
+        headers, rows, ids = la.get_aenderungsuebersicht()
+        if not rows:
+            QMessageBox.information(
+                self, "Übersicht der Änderungen",
+                "Seit dem Einschalten des Bearbeitungsmodus wurde noch keine "
+                "Zuteilung geändert."
+            )
+            return
+        self._oeffne_listenfenster(
+            f"Übersicht der Änderungen ({len(rows)})", headers, rows, row_ids=ids
+        )
 
     # ── Export ───────────────────────────────────────────────────────────────
 
