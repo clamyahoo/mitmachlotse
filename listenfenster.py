@@ -245,6 +245,11 @@ class ListenFenster(QDialog):
                 item = QTableWidgetItem(str(val))
                 if c != 0:
                     item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+                # Nachbearbeitungsmodus-Marker farblich hervorheben
+                if isinstance(val, db.Geaendert):
+                    item.setBackground(QColor(db.HERVORHEBUNG_GEAENDERT_HEX))
+                elif isinstance(val, db.Geist):
+                    item.setBackground(QColor(db.HERVORHEBUNG_GEIST_HEX))
                 self.table.setItem(r, c, item)
         self._setze_spaltenbreiten()
         self.lbl_anzahl.setText(f"{len(rows)} Einträge")
@@ -489,7 +494,12 @@ class ListenFenster(QDialog):
         for row in rows:
             parts.append("<tr>")
             for val in row:
-                parts.append(f"<td>{val}</td>")
+                if isinstance(val, db.Geaendert):
+                    parts.append(f"<td style='background:{db.HERVORHEBUNG_GEAENDERT_HEX}'>{val}</td>")
+                elif isinstance(val, db.Geist):
+                    parts.append(f"<td style='background:{db.HERVORHEBUNG_GEIST_HEX}'>{val}</td>")
+                else:
+                    parts.append(f"<td>{val}</td>")
             parts.append("</tr>\n")
         parts.append("</table>\n</body>\n</html>")
         return "".join(parts)

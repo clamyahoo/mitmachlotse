@@ -92,13 +92,32 @@ Rooms are keyed by their own stable `raeume.id`; each option references a room v
 `projekte.raum_id` (plus a free-text `projekte.zeit`). Crucially, `upsert_projekt` and
 `renumber_projekte_und_insert` must **not** touch `raum_id`/`zeit` — editing an option in
 the Optionen tab or renumbering options must preserve the room assignment. Room/time are
-written only through the dedicated `set_raum_zeit_for_projekt`. `pruefe_raumkonflikte`
+written only through the dedicated `set_raum_zeit_for_projekt` (and `set_raum_for_projekt`
+/ `set_raum_fixiert` for the auto-assigner). `pruefe_raumkonflikte`
 (in `validierung.py`) reads `get_raumplan()` and flags double-bookings (same room+time)
-and capacity issues as non-blocking hints.
+and capacity issues as hints (text + cell color) — it is display-only and never blocks by
+itself. The blocking happens in `hauptfenster.RaumplanTable`: assigning a room (or a time)
+that would create a same-room/same-time double-booking is rejected right in the
+`_on_raum_changed`/`_on_cell_changed` handlers (revert + `QMessageBox.warning`), so new
+conflicts can no longer be created through the UI; `pruefe_raumkonflikte`'s hints remain
+relevant for conflicts already present in imported/legacy data. Automatic room assignment
+lives in `raumzuteilung.py` (greedy first-fit-decreasing per time group, respecting the
+`projekte.raum_fixiert` flag) — it never touches the participant algorithm.
 
 Preconfigured export folders are stored as a JSON list under the `export_speicherorte`
 feldkonfig key (`get_speicherorte`/`set_speicherorte`); they surface as sidebar shortcuts
 in the save dialogs, not as direct WebDAV uploads.
+
+The **Nachbearbeitungsmodus** ("Einteilung → Bearbeitungsmodus Ein/Aus") snapshots the
+current assignment into `teilnehmer.projekt_baseline` and sets the `bearbeitungsmodus_aktiv`
+feldkonfig flag. While active, `database.zuteilung_anzeige(s)` returns a `Geaendert` (str
+subclass) marker `"old̶ → new"` when a person's `projekt` differs from its baseline, and
+`get_projektteilnehmerliste` appends `Geist`-marked (struck-through) rows for people who
+left an option. The markers are `str` subclasses, so they flow unchanged through
+`filter_spalten`/CSV/Qt items; renderers additionally `isinstance`-check them to apply the
+`HERVORHEBUNG_*_HEX` background color (screen, HTML/PDF via `_html_gruppen`, xlsx, ods; CSV
+keeps only the Unicode strike-through). Turning the mode off clears all baselines. The mode
+never affects the algorithm or room assignment — only display/export.
 
 ### Import/export (`importexport.py`)
 

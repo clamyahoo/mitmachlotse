@@ -25,7 +25,37 @@ FELDKONFIG_DEFAULTS = {
     "projekt_extra_3_label": "",
     "raumzuordnung_extra_label": "",  # Optionales Zusatzfeld Raumzuordnung
     "export_speicherorte":  "",   # JSON-Liste [{"name":..., "pfad":...}]
+    "bearbeitungsmodus_aktiv": "0",  # Nachbearbeitungsmodus: "1" = aktiv
 }
+
+
+# ── Nachbearbeitungsmodus: Marker + Anzeige-Helfer ───────────────────────────
+# Farben für die Hervorhebung geänderter bzw. "Geister"-Zuteilungen.
+HERVORHEBUNG_GEAENDERT_HEX = "#fff3b0"   # gelb: Zuteilung seit Basis geändert
+HERVORHEBUNG_GEIST_HEX     = "#e8e8e8"   # grau: war früher hier, jetzt woanders
+
+# U+0336 (COMBINING LONG STROKE OVERLAY): streicht das VORANGEHENDE Zeichen
+# durch -- reiner Text, kein Formatierungsattribut, wirkt daher in allen
+# Ausgabeformaten (Bildschirm, Druck, xlsx, ods, csv) gleichermaßen.
+_STRICH = "̶"
+
+
+class Geaendert(str):
+    """Markiert einen Zellwert als 'seit der Basis geändert' (Nachbearbeitungs-
+    modus). Ist eine str-Unterklasse, verhält sich also überall wie ein
+    normaler String; Renderer können zusätzlich per isinstance() die
+    Hervorhebung anwenden."""
+
+
+class Geist(str):
+    """Markiert einen Zellwert als 'Geister-Eintrag' (Person war zur Basis-Zeit
+    hier, ist jetzt woanders zugeteilt). str-Unterklasse wie Geaendert."""
+
+
+def _durchstreichen(text: str) -> str:
+    """Streicht jeden Buchstaben des Textes per Unicode-Overlay durch."""
+    text = str(text)
+    return "".join(ch + _STRICH for ch in text)
 
 _PLURALE = {
     "Option":        "Optionen",
@@ -213,6 +243,15 @@ def init_db():
         c.execute("ALTER TABLE projekte ADD COLUMN zeit TEXT DEFAULT ''")
     if "raumzuordnung_extra" not in spalten_p3:
         c.execute("ALTER TABLE projekte ADD COLUMN raumzuordnung_extra TEXT DEFAULT ''")
+    if "raum_fixiert" not in spalten_p3:
+        c.execute("ALTER TABLE projekte ADD COLUMN raum_fixiert INTEGER DEFAULT 0")
+
+    # ── Migration: Nachbearbeitungsmodus (Basis-Zuteilung je Teilnehmer/in) ──
+    # NULL = kein Bearbeitungsmodus-Stand erfasst; 0 = Basis war "unzugeteilt".
+    c.execute("PRAGMA table_info(teilnehmer)")
+    spalten_t2 = [row[1] for row in c.fetchall()]
+    if "projekt_baseline" not in spalten_t2:
+        c.execute("ALTER TABLE teilnehmer ADD COLUMN projekt_baseline INTEGER DEFAULT NULL")
 
     # ── Feldkonfiguration ─────────────────────────────────────────────────────
     c.execute("""
@@ -456,6 +495,30 @@ def set_raumzuordnung_extra(nummer: int, wert: str):
     conn.close()
 
 
+def set_raum_for_projekt(nummer: int, raum_id: int):
+    """Setzt nur den Raum einer Option (lässt zeit und raum_fixiert unberührt).
+    Für die automatische Raumzuteilung."""
+    conn = get_connection()
+    conn.execute(
+        "UPDATE projekte SET raum_id = ? WHERE nummer = ?",
+        (int(raum_id or 0), nummer)
+    )
+    conn.commit()
+    conn.close()
+
+
+def set_raum_fixiert(nummer: int, fixiert: bool):
+    """Fixiert die Raumzuordnung einer Option (wird von der automatischen
+    Raumzuteilung nie überschrieben) bzw. hebt die Fixierung auf."""
+    conn = get_connection()
+    conn.execute(
+        "UPDATE projekte SET raum_fixiert = ? WHERE nummer = ?",
+        (1 if fixiert else 0, nummer)
+    )
+    conn.commit()
+    conn.close()
+
+
 def get_raumplan():
     """Gibt je Option eine Zeile für den Raumplan zurück:
     Nr., Optionsname, Leitung, Raum (Name), Kapazität, Zeit,
@@ -463,7 +526,7 @@ def get_raumplan():
     conn = get_connection()
     rows = conn.execute("""
         SELECT p.nummer, p.projektname, p.leitung, p.raum_id, p.zeit,
-               p.raumzuordnung_extra,
+               p.raumzuordnung_extra, p.raum_fixiert,
                p.tnmin, p.tnmax,
                r.name       AS raum_name,
                r.kapazitaet AS raum_kapazitaet,
@@ -499,19 +562,24 @@ def get_teilnehmer_by_id(schueler_id: int):
 def insert_teilnehmer(data: dict) -> int:
     """Fügt einen Schüler ein und gibt die neu erzeugte ID zurück."""
     conn = get_connection()
+    # Bei aktivem Nachbearbeitungsmodus gilt der Zuteilungswert bei Anlage als
+    # Basis (die erste Zuteilung einer neu angelegten Person zählt dann nicht
+    # als "Änderung"); sonst bleibt die Basis leer (NULL).
+    modus_aktiv = ist_bearbeitungsmodus_aktiv()
     data = {**data, "fest_zugewiesen": data.get("fest_zugewiesen", 0),
             "extra_1": data.get("extra_1", ""),
             "extra_2": data.get("extra_2", ""),
-            "extra_3": data.get("extra_3", "")}
+            "extra_3": data.get("extra_3", ""),
+            "projekt_baseline": (data.get("projekt", 0) or 0) if modus_aktiv else None}
     cur = conn.execute("""
         INSERT INTO teilnehmer
             (nachname, vorname, stufe, stufenzusatz, geschlecht,
              wunsch_1, wunsch_2, wunsch_3, wunsch_4, wunsch_5, projekt,
-             fest_zugewiesen, extra_1, extra_2, extra_3)
+             fest_zugewiesen, extra_1, extra_2, extra_3, projekt_baseline)
         VALUES
             (:nachname, :vorname, :stufe, :stufenzusatz, :geschlecht,
              :wunsch_1, :wunsch_2, :wunsch_3, :wunsch_4, :wunsch_5, :projekt,
-             :fest_zugewiesen, :extra_1, :extra_2, :extra_3)
+             :fest_zugewiesen, :extra_1, :extra_2, :extra_3, :projekt_baseline)
     """, data)
     neue_id = cur.lastrowid
     conn.commit()
@@ -711,6 +779,50 @@ def set_feldkonfig(konfig: dict):
         """, (key, val))
     conn.commit()
     conn.close()
+
+
+# ── Nachbearbeitungsmodus (Ein/Aus + Anzeige) ────────────────────────────────
+
+def ist_bearbeitungsmodus_aktiv() -> bool:
+    """True, wenn der Nachbearbeitungsmodus in dieser Planungsmappe aktiv ist."""
+    return get_feldkonfig().get("bearbeitungsmodus_aktiv", "0") == "1"
+
+
+def bearbeitungsmodus_einschalten():
+    """Setzt die Basis-Zuteilung aller Teilnehmer/innen auf den aktuellen Stand
+    und aktiviert den Modus. Ab jetzt werden Abweichungen sichtbar gemacht."""
+    conn = get_connection()
+    conn.execute("UPDATE teilnehmer SET projekt_baseline = projekt")
+    conn.commit()
+    conn.close()
+    set_feldkonfig({"bearbeitungsmodus_aktiv": "1"})
+
+
+def bearbeitungsmodus_ausschalten():
+    """Deaktiviert den Modus und verwirft alle Basis-Zuteilungen -- die
+    aktuellen Zuteilungen gelten damit als fest, alle Markierungen und
+    Geister-Einträge verschwinden."""
+    conn = get_connection()
+    conn.execute("UPDATE teilnehmer SET projekt_baseline = NULL")
+    conn.commit()
+    conn.close()
+    set_feldkonfig({"bearbeitungsmodus_aktiv": "0"})
+
+
+def zuteilung_anzeige(s: dict):
+    """Anzeigewert für die Projekt-/Zuteilungsspalte einer Person.
+
+    Ohne aktiven Modus oder ohne Abweichung von der Basis: schlichter String
+    der aktuellen Zuteilung. Bei Abweichung: Geaendert("<alt durchgestrichen>
+    → <neu>") -- die Renderer heben solche Zellen zusätzlich farblich hervor.
+    """
+    aktuell = s.get("projekt", 0) or 0
+    if not ist_bearbeitungsmodus_aktiv():
+        return str(aktuell)
+    basis = s.get("projekt_baseline", None)
+    if basis is None or basis == aktuell:
+        return str(aktuell)
+    return Geaendert(f"{_durchstreichen(basis)} → {aktuell}")
 
 
 # ── Vorkonfigurierte Speicherorte ────────────────────────────────────────────
