@@ -225,44 +225,160 @@ def get_projektteilnehmerliste(projekt_nummer: int):
     Alle Schüler, die einem bestimmten Projekt zugeteilt sind.
     Sonderfall projekt_nummer=0: alle Teilnehmer/innen, die noch KEINEM
     Projekt zugeteilt sind.
-    Gibt (headers, rows, ids, projekt_info) zurück. projekt_info ist bei
-    projekt_nummer=0 None, da es kein echtes Projekt ist.
+    Gibt (headers, rows, ids, projekt_info, anzahl_aktuell) zurück.
+    projekt_info ist bei projekt_nummer=0 None, da es kein echtes Projekt ist.
+    anzahl_aktuell = Zahl der aktuell zugeteilten Personen OHNE die
+    Geister-Einträge (siehe unten), für Titel/Zähler.
     """
-    schueler = [s for s in db.get_all_teilnehmer() if s["projekt"] == projekt_nummer]
+    alle = db.get_all_teilnehmer()
+    schueler = [s for s in alle if s["projekt"] == projekt_nummer]
     projekte = _projekte_dict()
     p = projekte.get(projekt_nummer) if projekt_nummer != 0 else None
 
     headers = _basis_headers() + ["Wunschrang erhalten", "Fixiert"]
+
+    def _rang_text(s):
+        if projekt_nummer == 0:
+            return "–"
+        wuensche = [s["wunsch_1"], s["wunsch_2"], s["wunsch_3"], s["wunsch_4"], s["wunsch_5"]]
+        if projekt_nummer in wuensche:
+            return f"Wunsch {wuensche.index(projekt_nummer) + 1}"
+        return "kein Wunsch"
+
+    modus_aktiv = projekt_nummer != 0 and db.ist_bearbeitungsmodus_aktiv()
+
     rows = []
     ids = []
-
     for s in schueler:
-        if projekt_nummer == 0:
-            rang_text = "–"
-        else:
-            wuensche = [s["wunsch_1"], s["wunsch_2"], s["wunsch_3"], s["wunsch_4"], s["wunsch_5"]]
-            if projekt_nummer in wuensche:
-                rang = wuensche.index(projekt_nummer) + 1
-                rang_text = f"Wunsch {rang}"
-            else:
-                rang_text = "kein Wunsch"
         fixiert = "✓" if s.get("fest_zugewiesen") else ""
+        # Neuzugang im Nachbearbeitungsmodus: Person ist jetzt hier, war zur
+        # Basis-Zeit aber woanders (oder ohne Zuteilung). Gesamte Zeile gelb
+        # hervorheben (Geaendert) und Herkunft im Wunschrang-Feld vermerken --
+        # das Gegenstück zu den grauen Geister-Einträgen der Abgänge.
+        ist_neu = (modus_aktiv
+                   and s.get("projekt_baseline") is not None
+                   and s.get("projekt_baseline") != projekt_nummer)
+        if ist_neu:
+            basis = s.get("projekt_baseline") or 0
+            herkunft = f"vorher: {basis}" if basis else "vorher: –"
+            h = lambda v: db.Geaendert(str(v))
+            rows.append([
+                h(f"{s['nachname']}, {s['vorname']}"),
+                h(s["stufe"]),
+                h(s["stufenzusatz"]),
+                h(s["geschlecht"]),
+                *[h(w) for w in _wunsch_spalten(s)],
+                h(s["projekt"] if s["projekt"] != 0 else "0"),
+                h(f"{_rang_text(s)} · neu ({herkunft})"),
+                fixiert,
+            ])
+        else:
+            rows.append([
+                f"{s['nachname']}, {s['vorname']}",
+                s["stufe"],
+                s["stufenzusatz"],
+                s["geschlecht"],
+                *_wunsch_spalten(s),
+                s["projekt"] if s["projekt"] != 0 else "0",
+                _rang_text(s),
+                fixiert,
+            ])
+        ids.append(s["id"])
+
+    kombiniert = sorted(zip(rows, ids), key=lambda x: (_jgst_sortkey(str(x[0][1])), str(x[0][2]), str(x[0][0])))
+    rows = [r for r, _ in kombiniert]
+    ids = [i for _, i in kombiniert]
+    anzahl_aktuell = len(rows)
+
+    # Geister-Einträge (Nachbearbeitungsmodus): Personen, die zur Basis-Zeit
+    # dieser Option zugeteilt waren, jetzt aber woanders sind. Rein informativ
+    # (durchgestrichen, ans Ende der Liste), zählen NICHT zu anzahl_aktuell.
+    if projekt_nummer != 0 and db.ist_bearbeitungsmodus_aktiv():
+        geister = [s for s in alle
+                   if s.get("projekt_baseline") == projekt_nummer
+                   and s["projekt"] != projekt_nummer]
+        geister.sort(key=lambda s: (_jgst_sortkey(s["stufe"]),
+                                     str(s["stufenzusatz"]), str(s["nachname"])))
+        for s in geister:
+            g = lambda v: db.Geist(db._durchstreichen(str(v)))
+            aktuell = s["projekt"] if s["projekt"] != 0 else 0
+            rows.append([
+                g(f"{s['nachname']}, {s['vorname']}"),
+                g(s["stufe"]),
+                g(s["stufenzusatz"]),
+                g(s["geschlecht"]),
+                *[g(w) for w in _wunsch_spalten(s)],
+                g(f"jetzt: {aktuell}" if aktuell else "jetzt: –"),
+                g("umverteilt"),
+                g(""),
+            ])
+            ids.append(s["id"])
+
+    return headers, rows, ids, p, anzahl_aktuell
+
+
+# ── Änderungsübersicht (Nachbearbeitungsmodus) ───────────────────────────────
+
+def get_aenderungsuebersicht():
+    """
+    Übersicht aller im Nachbearbeitungsmodus umverteilten Teilnehmer/innen:
+    jede Person, deren aktuelle Zuteilung von ihrer Basis-Zuteilung abweicht.
+
+    Gibt (headers, rows, ids) zurück. Ist der Modus nicht aktiv, sind rows/ids
+    leer (der aufrufende Code weist dann darauf hin).
+    """
+    projekte = _projekte_dict()
+
+    def _name(nr):
+        if not nr:
+            return "–"
+        p = projekte.get(nr)
+        return f"{nr}: {p['projektname']}" if p else str(nr)
+
+    headers = [
+        "Name",
+        db.get_feldkonfig().get("stufe_label", "Gruppenbereich"),
+        db.get_feldkonfig().get("stufenzusatz_label", "Gruppenzusatz"),
+        "Vorher",
+        "Jetzt",
+        "Wunschrang erhalten",
+    ]
+    rows = []
+    ids = []
+    if not db.ist_bearbeitungsmodus_aktiv():
+        return headers, rows, ids
+
+    for s in db.get_all_teilnehmer():
+        basis = s.get("projekt_baseline")
+        aktuell = s.get("projekt", 0) or 0
+        if basis is None or basis == aktuell:
+            continue
+
+        if aktuell != 0:
+            wuensche = [s["wunsch_1"], s["wunsch_2"], s["wunsch_3"],
+                        s["wunsch_4"], s["wunsch_5"]]
+            if aktuell in wuensche:
+                rang = f"Wunsch {wuensche.index(aktuell) + 1}"
+            else:
+                rang = "kein Wunsch"
+        else:
+            rang = "–"
+
         rows.append([
             f"{s['nachname']}, {s['vorname']}",
             s["stufe"],
             s["stufenzusatz"],
-            s["geschlecht"],
-            *_wunsch_spalten(s),
-            s["projekt"] if s["projekt"] != 0 else "0",
-            rang_text,
-            fixiert,
+            _name(basis),
+            _name(aktuell),
+            rang,
         ])
         ids.append(s["id"])
 
-    kombiniert = sorted(zip(rows, ids), key=lambda x: (_jgst_sortkey(x[0][1]), str(x[0][2]), x[0][0]))
+    kombiniert = sorted(zip(rows, ids),
+                        key=lambda x: (_jgst_sortkey(str(x[0][1])), str(x[0][2]), str(x[0][0])))
     rows = [r for r, _ in kombiniert]
     ids = [i for _, i in kombiniert]
-    return headers, rows, ids, p
+    return headers, rows, ids
 
 
 # ── Klassenliste mit Zuteilung ───────────────────────────────────────────────
@@ -291,7 +407,7 @@ def get_klassenliste(jgst: str, abteilung: str = None):
             s["stufenzusatz"],
             s["geschlecht"],
             *_wunsch_spalten(s),
-            s["projekt"] if s["projekt"] != 0 else "0",
+            db.zuteilung_anzeige(s),
             fixiert,
         ])
         ids.append(s["id"])

@@ -21,6 +21,7 @@ import database as db
 import algorithmen as alg
 import importexport as ie
 import listenabfragen as la
+import raumzuteilung as rz
 import validierung as val_mod
 from dialoge import (
     ImportDialog, ExportDialog,
@@ -104,6 +105,7 @@ def _build_raumplan_spalten() -> list:
     ]
     if rzl:
         spalten.append(("raumzuordnung_extra", rzl))
+    spalten.append(("raum_fixiert", "Fix"))
     spalten.append(("hinweis", "Hinweis"))
     return spalten
 
@@ -356,6 +358,18 @@ class RaumplanTable(QTableWidget):
             if "raumzuordnung_extra" in self._idx:
                 self.setItem(r, self._idx["raumzuordnung_extra"],
                              QTableWidgetItem(str(row.get("raumzuordnung_extra", "") or "")))
+            # Fix: ankreuzbar; fixierte Zuordnungen überschreibt die Automatik nie
+            fix_item = QTableWidgetItem()
+            fix_item.setFlags(
+                (fix_item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                & ~Qt.ItemFlag.ItemIsEditable
+            )
+            fix_item.setCheckState(
+                Qt.CheckState.Checked if row.get("raum_fixiert")
+                else Qt.CheckState.Unchecked
+            )
+            fix_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.setItem(r, self._idx["raum_fixiert"], fix_item)
             self.setItem(r, self._idx["hinweis"], self._ro_item(""))
         self._loading = False
         self._aktualisiere_konflikte()
@@ -387,11 +401,66 @@ class RaumplanTable(QTableWidget):
         item = self.item(row, self._idx["raumzuordnung_extra"])
         return item.text() if item else ""
 
+    def _db_zeile(self, nummer: int) -> dict:
+        """Aktueller DB-Stand einer Option im Raumplan (vor der gerade
+        laufenden, noch ungespeicherten Änderung)."""
+        for row in db.get_raumplan():
+            if row["nummer"] == nummer:
+                return row
+        return {}
+
+    def _finde_raum_konflikt(self, nummer: int, raum_id: int, zeit: str) -> dict:
+        """Gibt die andere Option zurück, mit der `raum_id` kollidiert -- oder
+        ein leeres Dict, wenn frei/zulässig. `zeit` muss bereits getrimmt
+        sein. Ein Raum darf nur dann von zwei Optionen genutzt werden, wenn
+        BEIDE eine Zeit eingetragen haben UND sich diese unterscheiden --
+        fehlt bei einer der beiden die Zeit, lässt sich eine Überschneidung
+        nicht ausschließen, also gilt das ebenfalls als Konflikt."""
+        if not raum_id:
+            return {}
+        for row in db.get_raumplan():
+            if row["nummer"] == nummer:
+                continue
+            if (row.get("raum_id") or 0) != raum_id:
+                continue
+            andere_zeit = (row.get("zeit") or "").strip()
+            if zeit and andere_zeit and zeit != andere_zeit:
+                continue  # beide Zeiten gesetzt und unterschiedlich -> zulässige Mehrfachnutzung
+            return row
+        return {}
+
+    def _melde_raum_konflikt(self, raum_id: int, zeit: str, konflikt: dict):
+        raum_name = next((r["name"] for r in self._raeume if r["id"] == raum_id), "")
+        andere_zeit = (konflikt.get("zeit") or "").strip()
+        if zeit and andere_zeit:
+            zeit_teil = f"zur Zeit „{zeit}“ "
+        else:
+            zeit_teil = "(Zeit ist nicht bei beiden Optionen eingetragen) "
+        QMessageBox.warning(
+            self, "Raum bereits vergeben",
+            f"Der Raum „{raum_name}“ ist {zeit_teil}bereits Option "
+            f"{konflikt['nummer']} ({konflikt.get('projektname', '')}) "
+            f"zugeordnet.\n\nBitte wählen Sie einen anderen Raum oder eine "
+            f"andere Zeit."
+        )
+
     def _on_raum_changed(self, row: int):
         if self._loading:
             return
+        nummer = self._nummer(row)
         raum_id = self._raum_id(row)
-        db.set_raum_zeit_for_projekt(self._nummer(row), raum_id, self._zeit(row))
+        zeit = self._zeit(row).strip()
+        alte_zeile = self._db_zeile(nummer)
+        konflikt = self._finde_raum_konflikt(nummer, raum_id, zeit)
+        if konflikt:
+            self._melde_raum_konflikt(raum_id, zeit, konflikt)
+            self._loading = True
+            combo = self.cellWidget(row, self._idx["raum"])
+            idx = combo.findData(alte_zeile.get("raum_id") or 0)
+            combo.setCurrentIndex(idx if idx >= 0 else 0)
+            self._loading = False
+            return
+        db.set_raum_zeit_for_projekt(nummer, raum_id, self._zeit(row))
         # Kapazitätsspalte nachziehen
         self._loading = True
         self.setItem(row, self._idx["kapazitaet"], self._ro_item(self._kap_text(raum_id), True))
@@ -403,11 +472,27 @@ class RaumplanTable(QTableWidget):
         if self._loading:
             return
         if col == self._idx.get("zeit"):
-            db.set_raum_zeit_for_projekt(self._nummer(row), self._raum_id(row), self._zeit(row))
+            nummer = self._nummer(row)
+            raum_id = self._raum_id(row)
+            zeit = self._zeit(row).strip()
+            alte_zeile = self._db_zeile(nummer)
+            konflikt = self._finde_raum_konflikt(nummer, raum_id, zeit)
+            if konflikt:
+                self._melde_raum_konflikt(raum_id, zeit, konflikt)
+                self._loading = True
+                self.setItem(row, col, QTableWidgetItem(str(alte_zeile.get("zeit", "") or "")))
+                self._loading = False
+                return
+            db.set_raum_zeit_for_projekt(nummer, raum_id, self._zeit(row))
             self._aktualisiere_konflikte()
             self.changed.emit()
         elif col == self._idx.get("raumzuordnung_extra"):
             db.set_raumzuordnung_extra(self._nummer(row), self._raumzuordnung_extra_wert(row))
+            self.changed.emit()
+        elif col == self._idx.get("raum_fixiert"):
+            item = self.item(row, col)
+            fixiert = item is not None and item.checkState() == Qt.CheckState.Checked
+            db.set_raum_fixiert(self._nummer(row), fixiert)
             self.changed.emit()
 
     def _aktualisiere_konflikte(self):
@@ -485,6 +570,10 @@ class RaumplanTable(QTableWidget):
                     if txt.startswith("—"):
                         txt = ""
                     zeile.append(txt)
+                elif key == "raum_fixiert":
+                    item = self.item(r, self._idx["raum_fixiert"])
+                    fixiert = item is not None and item.checkState() == Qt.CheckState.Checked
+                    zeile.append("✓" if fixiert else "")
                 else:
                     item = self.item(r, self._idx[key])
                     zeile.append(item.text() if item else "")
@@ -610,7 +699,13 @@ class TeilnehmerTable(QTableWidget):
                 elif key == "fest_zugewiesen":
                     val = "✓" if (s["fest_zugewiesen"] and s["projekt"] != 0) else ""
                 elif key == "projekt":
-                    val = f"0 ⚠ Kein {db.get_feldkonfig().get('projekt_label', 'Option')}" if s["projekt"] == 0 else str(s["projekt"])
+                    az = db.zuteilung_anzeige(s)
+                    if isinstance(az, db.Geaendert):
+                        val = az  # z. B. "3̶ → 0" bzw. "1̶ → 2"
+                    elif s["projekt"] == 0:
+                        val = f"0 ⚠ Kein {db.get_feldkonfig().get('projekt_label', 'Option')}"
+                    else:
+                        val = str(s["projekt"])
                 elif key in ("extra_1", "extra_2", "extra_3"):
                     val = str(s.get(key, "") or "")
                 else:
@@ -622,7 +717,9 @@ class TeilnehmerTable(QTableWidget):
                     item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 if key == "projekt":
                     item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                    if s["projekt"] == 0:
+                    if isinstance(val, db.Geaendert):
+                        item.setBackground(QColor(db.HERVORHEBUNG_GEAENDERT_HEX))
+                    elif s["projekt"] == 0:
                         font = item.font()
                         font.setBold(True)
                         item.setFont(font)
@@ -1025,7 +1122,22 @@ class MainWindow(QMainWindow):
         self.a_exp_pr.setText(f"Gesamtliste nach {plP} exportieren")
         if hasattr(self, "raumplan_table"):
             self.raumplan_table.load()
+        self._sync_bearbeitungsmodus_menu()
         self.statistik_widget.refresh()
+
+    def _sync_bearbeitungsmodus_menu(self):
+        """Menütext + Statusleisten-Hinweis an den gespeicherten Modus-Zustand
+        anpassen (auch nach Öffnen einer anderen Planungsmappe)."""
+        if not hasattr(self, "a_bearbeitungsmodus"):
+            return
+        aktiv = db.ist_bearbeitungsmodus_aktiv()
+        self.a_bearbeitungsmodus.setText(
+            "Bearbeitungsmodus Aus" if aktiv else "Bearbeitungsmodus Ein"
+        )
+        if hasattr(self, "_bearbeitungsmodus_label"):
+            self._bearbeitungsmodus_label.setText(
+                "  ✎ Bearbeitungsmodus aktiv  " if aktiv else ""
+            )
 
     # ── Spaltenbezeichnungen ──────────────────────────────────────────────────
 
@@ -1147,6 +1259,12 @@ class MainWindow(QMainWindow):
         )
         pg_layout = QVBoxLayout(plan_group)
         pg_btns = QHBoxLayout()
+        btn_auto_raum = QPushButton("Räume automatisch zuweisen")
+        btn_auto_raum.clicked.connect(self._auto_raumzuteilung)
+        btn_reset_raum = QPushButton("Raumzuteilung aufheben")
+        btn_reset_raum.clicked.connect(self._reset_raumzuteilung)
+        pg_btns.addWidget(btn_auto_raum)
+        pg_btns.addWidget(btn_reset_raum)
         pg_btns.addStretch()
         btn_exp_raum = QPushButton("Exportieren")
         btn_exp_raum.clicked.connect(self._export_raumplan)
@@ -1192,6 +1310,15 @@ class MainWindow(QMainWindow):
 
         # Status-Bar
         self.statusBar().showMessage("Bereit.")
+
+        # Hinweis "Bearbeitungsmodus aktiv" (Text wird in
+        # _sync_bearbeitungsmodus_menu je nach Zustand gesetzt/geleert)
+        self._bearbeitungsmodus_label = QLabel("")
+        self._bearbeitungsmodus_label.setStyleSheet(
+            "color: #8a6d00; background: #fff3b0; border-radius: 3px;"
+            " font-weight: bold;"
+        )
+        self.statusBar().addPermanentWidget(self._bearbeitungsmodus_label)
 
         # Speicher-Indikator (Diskette): blass = gespeichert, kräftig = soeben geändert
         self._save_icon_label = QLabel()
@@ -1351,6 +1478,18 @@ class MainWindow(QMainWindow):
         a_fix_loeschen.triggered.connect(self._alle_fixierungen_aufheben)
         m_einteilen.addAction(a_fix_loeschen)
 
+        m_einteilen.addSeparator()
+
+        # Nachbearbeitungsmodus: Text wechselt zwischen Ein/Aus (siehe
+        # _sync_bearbeitungsmodus_menu, aufgerufen aus _sync_labels).
+        self.a_bearbeitungsmodus = QAction("Bearbeitungsmodus Ein", self)
+        self.a_bearbeitungsmodus.triggered.connect(self._toggle_bearbeitungsmodus)
+        m_einteilen.addAction(self.a_bearbeitungsmodus)
+
+        self.a_aenderungsuebersicht = QAction("Übersicht der Änderungen", self)
+        self.a_aenderungsuebersicht.triggered.connect(self._zeige_aenderungsuebersicht)
+        m_einteilen.addAction(self.a_aenderungsuebersicht)
+
         # Hinweis: Die feste Zuweisung einzelner Teilnehmer/innen erfolgt
         # über die Schaltflächen "Projekt zuteilen" und
         # "✗ Fixierung aufheben" direkt über der Schülertabelle
@@ -1467,6 +1606,7 @@ class MainWindow(QMainWindow):
         self._refresh_teilnehmer()
         self._refresh_angebote()
         self._refresh_raumplan()
+        self._sync_bearbeitungsmodus_menu()
         self.statistik_widget.refresh()
 
     def _refresh_raumplan(self):
@@ -2132,6 +2272,56 @@ h2{{font-size:11pt}}</style></head><body>
         self.tabs.setCurrentIndex(2)
         self._import("raeume")
 
+    def _auto_raumzuteilung(self):
+        """Raumplan → Räume automatisch zuweisen."""
+        if not db.get_all_raeume():
+            QMessageBox.warning(self, "Keine Räume",
+                                "Es ist noch kein Raum angelegt.")
+            return
+        antwort = QMessageBox.question(
+            self, "Räume automatisch zuweisen",
+            "Räume automatisch auf die Optionen verteilen?\n\n"
+            "Die Verteilung erfolgt je Zeit (gleiche Zeit = verschiedene Räume, "
+            "verschiedene Zeiten dürfen denselben Raum nutzen). Bestehende, "
+            "NICHT fixierte Raumzuordnungen werden dabei neu vergeben; als "
+            "„Fix“ markierte Zuordnungen bleiben unverändert.\n\n"
+            "Voraussetzung: Die Zeiten sind bereits eingetragen.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if antwort != QMessageBox.StandardButton.Yes:
+            return
+
+        ergebnis = rz.automatische_raumzuteilung()
+        for nummer, raum_id in ergebnis["zuordnungen"].items():
+            db.set_raum_for_projekt(nummer, raum_id)
+        self._refresh_raumplan()
+        self._signal_gespeichert()
+
+        msg = f"Räume automatisch zugewiesen: {ergebnis['anzahl']}"
+        hinweise = ergebnis["hinweise"]
+        if hinweise:
+            msg += (f"\n\n⚠ {len(hinweise)} Option(en) konnten keinem Raum "
+                    f"zugewiesen werden:\n\n" + "\n".join(hinweise))
+            QMessageBox.warning(self, "Raumzuteilung abgeschlossen", msg)
+        else:
+            QMessageBox.information(self, "Raumzuteilung abgeschlossen", msg)
+
+    def _reset_raumzuteilung(self):
+        """Raumplan → Raumzuteilung aufheben (nur nicht fixierte)."""
+        antwort = QMessageBox.question(
+            self, "Raumzuteilung aufheben",
+            "Alle nicht fixierten Raumzuordnungen entfernen?\n\n"
+            "Als „Fix“ markierte Zuordnungen bleiben erhalten.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if antwort != QMessageBox.StandardButton.Yes:
+            return
+        anzahl = rz.raumzuteilung_aufheben()
+        self._refresh_raumplan()
+        self._signal_gespeichert()
+        self.statusBar().showMessage(
+            f"{anzahl} Raumzuordnung(en) aufgehoben.", 4000)
+
     def _export_raumliste(self):
         """Exportiert die Raumliste so, dass die Datei beim Wiederimport
         automatisch zum Raum-Spaltenzuordnungsfenster passt (Spaltentitel
@@ -2512,6 +2702,68 @@ h2{{font-size:11pt}}</style></head><body>
         self._refresh_teilnehmer()
         self.statistik_widget.refresh()
 
+    def _toggle_bearbeitungsmodus(self):
+        """Einteilung → Bearbeitungsmodus Ein/Aus."""
+        if db.ist_bearbeitungsmodus_aktiv():
+            antwort = QMessageBox.question(
+                self, "Bearbeitungsmodus beenden",
+                "Bearbeitungsmodus ausschalten?\n\n"
+                "Der aktuelle Zuteilungsstand gilt damit als fest. Alle "
+                "Änderungsmarkierungen (durchgestrichene alte Zuteilungen) "
+                "und die durchgestrichenen Einträge in den Teilnehmerlisten "
+                "verschwinden endgültig.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if antwort != QMessageBox.StandardButton.Yes:
+                return
+            db.bearbeitungsmodus_ausschalten()
+            self.statusBar().showMessage("Bearbeitungsmodus beendet.", 4000)
+        else:
+            antwort = QMessageBox.question(
+                self, "Bearbeitungsmodus starten",
+                "Bearbeitungsmodus einschalten?\n\n"
+                "Der aktuelle Zuteilungsstand wird als Ausgangsstand "
+                "festgehalten. Ab jetzt werden alle Umverteilungen sichtbar "
+                "gemacht:\n"
+                "• in Gruppenlisten die geänderte Zuteilung (alte Nummer "
+                "durchgestrichen → neue Nummer),\n"
+                "• in Teilnehmerlisten einer Option ehemalige Mitglieder "
+                "durchgestrichen als Hinweis.\n\n"
+                "Die Raumzuteilung und alle anderen Funktionen bleiben davon "
+                "unberührt.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if antwort != QMessageBox.StandardButton.Yes:
+                return
+            db.bearbeitungsmodus_einschalten()
+            self.statusBar().showMessage("Bearbeitungsmodus aktiv.", 4000)
+        self._sync_bearbeitungsmodus_menu()
+        self._refresh_all()
+
+    def _zeige_aenderungsuebersicht(self):
+        """Einteilung → Übersicht der Änderungen: alle im Nachbearbeitungsmodus
+        umverteilten Teilnehmer/innen auf einen Blick."""
+        if not db.ist_bearbeitungsmodus_aktiv():
+            QMessageBox.information(
+                self, "Übersicht der Änderungen",
+                "Der Bearbeitungsmodus ist nicht aktiv.\n\n"
+                "Diese Übersicht zeigt alle Umverteilungen, die seit dem "
+                "Einschalten des Bearbeitungsmodus vorgenommen wurden. "
+                "Schalten Sie ihn zuerst ein (Einteilung → Bearbeitungsmodus Ein)."
+            )
+            return
+        headers, rows, ids = la.get_aenderungsuebersicht()
+        if not rows:
+            QMessageBox.information(
+                self, "Übersicht der Änderungen",
+                "Seit dem Einschalten des Bearbeitungsmodus wurde noch keine "
+                "Zuteilung geändert."
+            )
+            return
+        self._oeffne_listenfenster(
+            f"Übersicht der Änderungen ({len(rows)})", headers, rows, row_ids=ids
+        )
+
     # ── Export ───────────────────────────────────────────────────────────────
 
     def _export(self):
@@ -2756,17 +3008,17 @@ h2{{font-size:11pt}}</style></head><body>
         ohne vorherigen Auswahldialog (z. B. per Doppelklick aus der
         Statistik-Tabelle). projekt_nr=0 zeigt alle Teilnehmer/innen ohne
         Projektzuteilung."""
-        headers, rows, ids, p_info = la.get_projektteilnehmerliste(projekt_nr)
+        headers, rows, ids, p_info, anzahl_aktuell = la.get_projektteilnehmerliste(projekt_nr)
 
         pl, _, _ = self._get_pl()
 
         if projekt_nr == 0:
-            titel = f"Teilnehmer/innen ohne {pl} ({len(rows)})"
+            titel = f"Teilnehmer/innen ohne {pl} ({anzahl_aktuell})"
         else:
             titel = f"Teilnehmerliste – {pl} {projekt_nr}"
             if p_info:
                 titel += f": {p_info['projektname']}"
-                tn_info = f" ({len(rows)} TN, Plätze: {p_info['tnmin']}–{p_info['tnmax']})"
+                tn_info = f" ({anzahl_aktuell} TN, Plätze: {p_info['tnmin']}–{p_info['tnmax']})"
                 titel += tn_info
 
         if not rows:
@@ -2781,7 +3033,7 @@ h2{{font-size:11pt}}</style></head><body>
 
         def zuteilen(schueler_id):
             self._feste_zuweisung(schueler_id, nur_wunschprojekte=True)
-            h, r, i, p = la.get_projektteilnehmerliste(projekt_nr)
+            h, r, i, p, _n = la.get_projektteilnehmerliste(projekt_nr)
             fenster_ref["f"].aktualisiere_daten(h, r, i)
 
         def details_tl(pnr=projekt_nr):

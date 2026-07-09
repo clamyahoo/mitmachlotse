@@ -223,41 +223,67 @@ def setze_unzulaessige_wuensche_auf_null(nur_ids: list = None) -> int:
 def pruefe_raumkonflikte() -> dict:
     """
     Prüft die Raum-/Zeitzuordnung der Optionen und gibt je betroffener Option
-    einen Hinweis zurück (nur Hinweise, keine Sperre).
+    einen Hinweis zurück. Reine Anzeigefunktion (Hinweistext + Zellfärbung im
+    Raumplan-Tab); sperrt selbst nichts. Neue Doppelbelegungen können über die
+    UI ohnehin nicht mehr entstehen -- RaumplanTable blockiert das manuelle
+    Zuweisen eines bereits (zur selben Zeit) vergebenen Raums direkt beim
+    Ändern von Raum oder Zeit. Diese Funktion bleibt trotzdem als Netz für
+    Altdaten/Importe relevant, bei denen ein Konflikt bereits in der
+    Datenbank steht, bevor die UI ihn verhindern konnte.
 
     Rückgabe: dict  option_nummer -> {
-        "doppelbelegung": bool,   # gleicher Raum + gleiche Zeit wie andere Option(en)
+        "doppelbelegung": bool,   # gleicher Raum, Konflikt mit anderer Option (s.u.)
         "kapazitaet":     bool,   # Raumkapazität kleiner als Belegung/geplante Plätze
         "text":           str,    # zusammengefasster Hinweistext für Tooltip/Spalte
     }
     Optionen ohne Auffälligkeit tauchen nicht im dict auf.
+
+    Ein Raum darf von zwei Optionen nur dann gemeinsam genutzt werden, wenn
+    BEIDE eine Zeit eingetragen haben UND sich diese unterscheiden -- fehlt
+    bei einer der beiden die Zeit, lässt sich eine Überschneidung nicht
+    ausschließen und gilt ebenfalls als Doppelbelegung (konsistent mit der
+    Blockade in hauptfenster.RaumplanTable).
     """
     plan = db.get_raumplan()
     ergebnis: dict = {}
 
-    # ── Doppelbelegung: gleiche (raum_id, zeit) bei mehr als einer Option ──
-    belegung: dict = {}
+    # ── Doppelbelegung: gleicher Raum bei mehr als einer Option, außer beide
+    #    haben unterschiedliche, jeweils eingetragene Zeiten ──────────────
+    by_raum: dict = {}
     for row in plan:
         raum_id = row.get("raum_id") or 0
-        zeit = (row.get("zeit") or "").strip()
-        if raum_id and zeit:
-            belegung.setdefault((raum_id, zeit), []).append(row)
+        if raum_id:
+            by_raum.setdefault(raum_id, []).append(row)
 
-    for (_raum_id, zeit), optionen in belegung.items():
-        if len(optionen) > 1:
-            raum_name = optionen[0].get("raum_name") or "?"
-            for row in optionen:
-                andere = [str(o["nummer"]) for o in optionen
-                          if o["nummer"] != row["nummer"]]
-                eintrag = ergebnis.setdefault(
-                    row["nummer"],
-                    {"doppelbelegung": False, "kapazitaet": False, "text": ""}
-                )
-                eintrag["doppelbelegung"] = True
-                eintrag["_dopp"] = (
-                    f"Doppelbelegung: Raum „{raum_name}“ zur Zeit "
-                    f"„{zeit}“ auch bei Option {', '.join(andere)}"
-                )
+    for raum_id, optionen in by_raum.items():
+        if len(optionen) < 2:
+            continue
+        raum_name = optionen[0].get("raum_name") or "?"
+        for row in optionen:
+            eigene_zeit = (row.get("zeit") or "").strip()
+            andere = []
+            for other in optionen:
+                if other["nummer"] == row["nummer"]:
+                    continue
+                andere_zeit = (other.get("zeit") or "").strip()
+                if eigene_zeit and andere_zeit and eigene_zeit != andere_zeit:
+                    continue  # beide Zeiten gesetzt und unterschiedlich -> zulässig
+                andere.append(str(other["nummer"]))
+            if not andere:
+                continue
+            eintrag = ergebnis.setdefault(
+                row["nummer"],
+                {"doppelbelegung": False, "kapazitaet": False, "text": ""}
+            )
+            eintrag["doppelbelegung"] = True
+            if eigene_zeit:
+                zeit_teil = f"zur Zeit „{eigene_zeit}“ "
+            else:
+                zeit_teil = "(Zeit nicht eingetragen) "
+            eintrag["_dopp"] = (
+                f"Doppelbelegung: Raum „{raum_name}“ {zeit_teil}"
+                f"auch bei Option {', '.join(andere)}"
+            )
 
     # ── Kapazität: Raumkapazität < Belegung bzw. geplante Plätze (tnmax) ──
     for row in plan:

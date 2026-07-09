@@ -748,6 +748,15 @@ def import_projekte(headers: list, rows: list, mapping: dict, append: bool = Fal
 
     int_felder = {"nummer", "stufenmin", "stufenmax", "tnmin", "tnmax"}
 
+    # Belegte Nummern (beim Anhängen: bereits vorhandene Optionen). Fehlt die
+    # Nummer in der Quelldatei oder kollidiert sie mit einer bereits
+    # vergebenen, wird stattdessen fortlaufend weiternummeriert -- so
+    # überschreibt "Anhängen" nie bestehende Optionen (upsert_projekt schreibt
+    # sonst per ON CONFLICT(nummer) darüber), und eine leere Nummernspalte
+    # verhindert den Import einer Zeile nicht mehr.
+    vorhandene_nummern = {p["nummer"] for p in db.get_all_projekte()}
+    naechste_nummer = max(vorhandene_nummern, default=0) + 1
+
     for row in rows:
         record = _default_projekt()
         for feld, idx in mapping.items():
@@ -761,8 +770,19 @@ def import_projekte(headers: list, rows: list, mapping: dict, append: bool = Fal
                 record[feld] = _coerce_int(val)
             else:
                 record[feld] = val if val else record[feld]
-        if record["nummer"] != 0:
-            db.upsert_projekt(record)
+
+        # Leere/Titelzeilen überspringen -- Kriterium ist der Optionsname,
+        # nicht mehr die Nummer (die soll fehlen dürfen, siehe oben).
+        if not record["projektname"] or record["projektname"] == "-":
+            continue
+
+        if record["nummer"] == 0 or record["nummer"] in vorhandene_nummern:
+            record["nummer"] = naechste_nummer
+
+        vorhandene_nummern.add(record["nummer"])
+        naechste_nummer = max(naechste_nummer, record["nummer"] + 1)
+
+        db.upsert_projekt(record)
 
 
 # ── TXT-Export ───────────────────────────────────────────────────────────────
@@ -1075,7 +1095,12 @@ def _html_gruppen(gruppen: list, kopfzeile: str, seitenumbrueche: bool,
         for row in rows:
             parts.append("<tr>")
             for val in row:
-                parts.append(f"<td>{val}</td>")
+                if isinstance(val, db.Geaendert):
+                    parts.append(f"<td style='background:{db.HERVORHEBUNG_GEAENDERT_HEX}'>{val}</td>")
+                elif isinstance(val, db.Geist):
+                    parts.append(f"<td style='background:{db.HERVORHEBUNG_GEIST_HEX}'>{val}</td>")
+                else:
+                    parts.append(f"<td>{val}</td>")
             parts.append("</tr>")
         parts.append("</tbody></table>")
     parts.append("</body></html>")
@@ -1117,9 +1142,18 @@ def export_gruppen_xlsx(path: str, gruppen: list, kopfzeile: str,
             c.fill = header_fill
             c.font = Font(bold=True, color="FFFFFF")
         cur_row += 1
+        fill_geaendert = PatternFill(
+            "solid", fgColor=db.HERVORHEBUNG_GEAENDERT_HEX.lstrip("#"))
+        fill_geist = PatternFill(
+            "solid", fgColor=db.HERVORHEBUNG_GEIST_HEX.lstrip("#"))
         for row in rows:
             for ci, val in enumerate(row, 1):
-                ws.cell(row=cur_row, column=ci, value=val)
+                cell = ws.cell(row=cur_row, column=ci, value=val)
+                # Nachbearbeitungsmodus-Marker farblich hervorheben
+                if isinstance(val, db.Geaendert):
+                    cell.fill = fill_geaendert
+                elif isinstance(val, db.Geist):
+                    cell.fill = fill_geist
             cur_row += 1
         if seitenumbrueche and gi < len(gruppen) - 1:
             ws.row_breaks.append(Break(id=cur_row - 1))
@@ -1187,6 +1221,8 @@ def export_gruppen_ods(path: str, gruppen: list, kopfzeile: str,
     _add_cell_style("Bold",   fontweight="bold")
     _add_cell_style("Header", fontweight="bold",
                     color="#ffffff", backgroundcolor="#4472C4")
+    _add_cell_style("Geaendert", backgroundcolor=db.HERVORHEBUNG_GEAENDERT_HEX)
+    _add_cell_style("Geist",     backgroundcolor=db.HERVORHEBUNG_GEIST_HEX)
 
     brk = Style(name="PageBreak", family="table-row")
     brk.addElement(TableRowProperties(breakbefore="page"))
@@ -1201,8 +1237,16 @@ def export_gruppen_ods(path: str, gruppen: list, kopfzeile: str,
     def _row(*vals, cell_style=None, row_style=None):
         tr = TableRow(stylename=row_style) if row_style else TableRow()
         for v in vals:
-            tc = (TableCell(stylename=cell_style, valuetype="string")
-                  if cell_style else TableCell(valuetype="string"))
+            # Ohne expliziten Stil bekommen Nachbearbeitungsmodus-Marker
+            # ihren Hervorhebungsstil (pro Zelle).
+            stil = cell_style
+            if stil is None:
+                if isinstance(v, db.Geaendert):
+                    stil = "Geaendert"
+                elif isinstance(v, db.Geist):
+                    stil = "Geist"
+            tc = (TableCell(stylename=stil, valuetype="string")
+                  if stil else TableCell(valuetype="string"))
             tc.addElement(P(text=str(v) if v is not None else ""))
             tr.addElement(tc)
         return tr
@@ -1375,7 +1419,10 @@ def get_gesamtliste_nach_klassen(mit_wuenschen: bool = True) -> list:
                  else f"{sl} {stufe}")
         rows = []
         for s in grp:
-            p = s["projekt"] if s["projekt"] else ""
+            # Bei aktivem Bearbeitungsmodus und Abweichung den Marker anzeigen,
+            # sonst wie bisher (leer bei unzugeteilt).
+            az = db.zuteilung_anzeige(s)
+            p = az if isinstance(az, db.Geaendert) else (s["projekt"] if s["projekt"] else "")
             if mit_wuenschen:
                 rows.append([
                     f"{s['nachname']}, {s['vorname']}",

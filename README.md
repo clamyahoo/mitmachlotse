@@ -58,6 +58,15 @@ Räumliche und zeitliche Organisation der Optionen.
   als die geplanten Plätze). Die Hinweise sind bewusst nur Warnungen, keine
   Sperren. Buttons `Exportieren`, `Drucken`, `Druckvorschau` erzeugen einen
   fertigen Raumplan (mit Feldauswahl, s. u.).
+- **Räume automatisch zuweisen**: verteilt die Räume automatisch auf die
+  Optionen. Gruppiert nach der eingetragenen **Zeit** (gleiche Zeit = verschiedene
+  Räume, verschiedene Zeiten dürfen denselben Raum nutzen) und wählt je Option
+  den kleinsten ausreichend großen freien Raum. Als **Bedarf** gilt die aktuelle
+  Belegung, sonst die geplanten Plätze (max). Reicht kein Raum, erscheint ein
+  Hinweis (keine harte Sperre). Voraussetzung: Zeiten sind eingetragen (Zeiten
+  werden nicht automatisch vergeben). Die Spalte **Fix** hält eine Raumzuordnung
+  fest – solche Zuordnungen lässt die Automatik unangetastet und plant um sie
+  herum. `Raumzuteilung aufheben` entfernt alle nicht fixierten Raumzuordnungen.
 
 **Tab 4 – Auswertung, Nachbearbeitung, Export**
 
@@ -333,6 +342,38 @@ es dort immer nur eine einzige Liste gibt.
 - **Fixierung aufheben** (`Strg+Shift+R`)
 - **Alle fixen Zuweisungen löschen**
 - **Automatische Zuweisung aufheben**
+
+---
+
+## Nachbearbeitungsmodus
+
+Über **Einteilung → Bearbeitungsmodus Ein/Aus** lässt sich ein bestimmter
+Zuteilungsstand als Ausgangsstand („Basis") festhalten. Solange der Modus aktiv
+ist (Hinweis in der Statusleiste), werden alle späteren Umverteilungen sichtbar
+gemacht — ohne den Algorithmus oder die Raumzuteilung zu beeinflussen:
+
+- In **Gruppenlisten** (Haupttabelle Teilnehmer/innen, Gruppenliste-Fenster und
+  Gesamtliste-Export nach Gruppen) zeigt die Zuteilungsspalte bei geänderten
+  Personen die **alte Nummer durchgestrichen → neue Nummer** und ist farblich
+  hervorgehoben.
+- In den **Teilnehmerlisten einer Option** wird jede Umverteilung von beiden
+  Seiten sichtbar: Personen, die zur Basis-Zeit dort waren, jetzt aber woanders
+  zugeteilt sind, erscheinen **durchgestrichen am Ende der Liste** als Hinweis
+  („war hier"); **neu hinzugekommene** Personen sind **gelb hervorgehoben** und
+  tragen im Feld „Wunschrang erhalten" den Vermerk „… · neu (vorher: N)", so
+  dass man sofort sieht, wer neu ist und woher er/sie kommt. Nur die
+  durchgestrichenen Abgänge zählen nicht zur aktuellen Teilnehmerzahl.
+- Über **Einteilung → Übersicht der Änderungen** öffnet sich eine Liste, die
+  **alle umverteilten Teilnehmer/innen auf einen Blick** zeigt (Name, Gruppe,
+  Vorher, Jetzt, erhaltener Wunschrang) — bequem druck- und exportierbar.
+
+Die Hervorhebung erscheint einheitlich am Bildschirm, im Druck und in allen
+Exportformaten (bei CSV mangels Formatierung nur die Durchstreichung als
+Textzeichen, ohne Farbe). Der Bearbeitungsmodus wird **mit der Planungsmappe
+gespeichert**: Beim erneuten Öffnen der Datei ist er wieder genau im selben
+Zustand wie zuvor (inkl. Basis-Stand). **Bearbeitungsmodus Aus** macht den
+aktuellen Stand endgültig fest: alle Markierungen und durchgestrichenen
+Einträge verschwinden.
 
 ---
 
