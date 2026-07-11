@@ -1,11 +1,11 @@
 #!/bin/bash
-# Startskript für die Projekttage-App
+# Startskript für Mitmach-Lotse
 # Stellt sicher, dass PyQt6 und openpyxl installiert sind
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-echo "=== Projekttage-Einteilungsprogramm ==="
+echo "=== Mitmach-Lotse ==="
 
 # Python prüfen
 if ! command -v python3 &>/dev/null; then
