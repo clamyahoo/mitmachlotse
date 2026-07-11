@@ -2,7 +2,7 @@
 REM Startskript für Windows
 cd /d "%~dp0"
 
-echo === Projekttage-Einteilungsprogramm ===
+echo === Mitmach-Lotse ===
 
 REM Python prüfen
 python --version >nul 2>&1
