@@ -1419,29 +1419,44 @@ def get_gesamtliste_nach_klassen(mit_wuenschen: bool = True) -> list:
                  else f"{sl} {stufe}")
         rows = []
         for s in grp:
-            # Bei aktivem Bearbeitungsmodus und Abweichung den Marker anzeigen,
-            # sonst wie bisher (leer bei unzugeteilt).
+            # Bei aktivem Bearbeitungsmodus und Abweichung den Marker anzeigen
+            # und die GANZE Zeile hervorheben (analog zu den Einzelprojekt-
+            # Exporten), sonst wie bisher (leer bei unzugeteilt).
             az = db.zuteilung_anzeige(s)
-            p = az if isinstance(az, db.Geaendert) else (s["projekt"] if s["projekt"] else "")
+            geaendert = isinstance(az, db.Geaendert)
+            p = az if geaendert else (s["projekt"] if s["projekt"] else "")
             if mit_wuenschen:
-                rows.append([
+                werte = [
                     f"{s['nachname']}, {s['vorname']}",
                     s["stufe"], s["stufenzusatz"],
                     s["wunsch_1"] or "", s["wunsch_2"] or "",
                     s["wunsch_3"] or "", s["wunsch_4"] or "",
                     s["wunsch_5"] or "", p,
-                ])
+                ]
             else:
-                rows.append([
+                werte = [
                     f"{s['nachname']}, {s['vorname']}",
                     s["stufe"], s["stufenzusatz"], p,
-                ])
+                ]
+            if geaendert:
+                werte = [db.Geaendert(str(v)) for v in werte[:-1]] + [werte[-1]]
+            rows.append(werte)
         gruppen.append((label, hdrs, rows))
     return gruppen
 
 
 def get_gesamtliste_nach_projekten(mit_wuenschen: bool = True) -> list:
-    """[(gruppenname, headers, rows), ...] sortiert nach Projekt/Name."""
+    """[(gruppenname, headers, rows), ...] sortiert nach Projekt/Name.
+
+    Bei aktivem Nachbearbeitungsmodus wird -- analog zu
+    listenabfragen.get_projektteilnehmerliste -- je Projektgruppe zusätzlich
+    sichtbar, wer neu hinzugekommen ist (ganze Zeile gelb, Spalte "Änderung"
+    zeigt die Herkunft) und wer die Gruppe seit der Basis-Zuteilung verlassen
+    hat (grau durchgestrichene Geister-Zeile am Gruppenende, wie bei den
+    Einzelprojekt-Exporten). Für die Pseudo-Gruppe "noch nicht zugeteilt"
+    (Projekt 0) wird das -- wie in get_projektteilnehmerliste -- nicht
+    verfolgt.
+    """
     from itertools import groupby
     k = db.get_feldkonfig()
     sl  = k.get("stufe_label",        "Gruppenbereich")
@@ -1449,6 +1464,7 @@ def get_gesamtliste_nach_projekten(mit_wuenschen: bool = True) -> list:
 
     alle_tn   = db.get_all_teilnehmer()
     alle_proj = {p["nummer"]: p for p in db.get_all_projekte()}
+    modus_aktiv = db.ist_bearbeitungsmodus_aktiv()
 
     alle_tn.sort(key=lambda s: (
         s["projekt"] or 0,
@@ -1461,6 +1477,16 @@ def get_gesamtliste_nach_projekten(mit_wuenschen: bool = True) -> list:
                 "Wunsch 1", "Wunsch 2", "Wunsch 3", "Wunsch 4", "Wunsch 5"]
     else:
         hdrs = ["Name", sl, zl]
+    if modus_aktiv:
+        hdrs = hdrs + ["Änderung"]
+
+    def _basis_werte(s: dict) -> list:
+        werte = [f"{s['nachname']}, {s['vorname']}", s["stufe"], s["stufenzusatz"]]
+        if mit_wuenschen:
+            werte += [s["wunsch_1"] or "", s["wunsch_2"] or "",
+                      s["wunsch_3"] or "", s["wunsch_4"] or "",
+                      s["wunsch_5"] or ""]
+        return werte
 
     gruppen = []
     for projekt_nr, grp in groupby(alle_tn, key=lambda s: s["projekt"]):
@@ -1473,19 +1499,32 @@ def get_gesamtliste_nach_projekten(mit_wuenschen: bool = True) -> list:
             label = str(projekt_nr)
         rows = []
         for s in grp:
-            if mit_wuenschen:
-                rows.append([
-                    f"{s['nachname']}, {s['vorname']}",
-                    s["stufe"], s["stufenzusatz"],
-                    s["wunsch_1"] or "", s["wunsch_2"] or "",
-                    s["wunsch_3"] or "", s["wunsch_4"] or "",
-                    s["wunsch_5"] or "",
-                ])
-            else:
-                rows.append([
-                    f"{s['nachname']}, {s['vorname']}",
-                    s["stufe"], s["stufenzusatz"],
-                ])
+            werte = _basis_werte(s)
+            if modus_aktiv:
+                basis = s.get("projekt_baseline")
+                ist_neu = (projekt_nr != 0 and basis is not None and basis != projekt_nr)
+                if ist_neu:
+                    herkunft = str(basis) if basis else "–"
+                    werte = [db.Geaendert(str(v)) for v in werte]
+                    werte.append(db.Geaendert(f"neu (vorher: {herkunft})"))
+                else:
+                    werte.append("")
+            rows.append(werte)
+
+        # Geister: Personen, deren Basis-Zuteilung dieses Projekt war, jetzt
+        # aber woanders zugeteilt sind (mirror der Einzelprojekt-Ansicht).
+        if modus_aktiv and projekt_nr != 0:
+            geister = [s for s in alle_tn
+                       if s.get("projekt_baseline") == projekt_nr
+                       and s["projekt"] != projekt_nr]
+            geister.sort(key=lambda s: (str(s["nachname"]), str(s["vorname"])))
+            for s in geister:
+                aktuell = s["projekt"] if s["projekt"] != 0 else 0
+                ziel = str(aktuell) if aktuell else "–"
+                werte = [db.Geist(db._durchstreichen(str(v))) for v in _basis_werte(s)]
+                werte.append(db.Geist(db._durchstreichen(f"verlassen (jetzt: {ziel})")))
+                rows.append(werte)
+
         gruppen.append((label, hdrs, rows))
     return gruppen
 
