@@ -13,6 +13,8 @@ a = Analysis(
         'validierung.py','_mcmf.py','_zuteilungsplaner.py',
     ]] + [
         (str(f), 'beispieldaten') for f in (APP_DIR / 'beispieldaten').glob('*')
+    ] + [
+        (str(f), 'img') for f in (APP_DIR / 'img').glob('*')
     ],
     hiddenimports=['PyQt6.QtCore','PyQt6.QtGui','PyQt6.QtWidgets',
                    'PyQt6.QtPrintSupport','openpyxl','odf','odf.opendocument',

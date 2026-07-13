@@ -16,7 +16,7 @@ APPDIR=build_scripts/dist/linux/AppDir
 rm -rf "$APPDIR"
 mkdir -p "$APPDIR/usr/bin"
 cp "build_scripts/dist/linux/Mitmach-Lotse" "$APPDIR/usr/bin/Mitmach-Lotse"
-cp build_scripts/appimage/mitmachlotse.png "$APPDIR/mitmachlotse.png"
+cp img/mitmachlotse.png "$APPDIR/mitmachlotse.png"
 
 cat > "$APPDIR/mitmachlotse.desktop" << DESK
 [Desktop Entry]

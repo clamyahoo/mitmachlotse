@@ -11,9 +11,10 @@ from PyQt6.QtWidgets import (
     QListWidget, QListWidgetItem, QSpinBox, QTabWidget, QInputDialog
 )
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QPalette, QColor
+from PyQt6.QtGui import QPalette, QColor, QPixmap
 import os
 import re
+from pathlib import Path
 import importexport as ie
 import database as db
 
@@ -1725,6 +1726,16 @@ class EinrichtungsassistentDialog(QDialog):
         lay.setSpacing(16)
         lay.setContentsMargins(32, 24, 32, 24)
 
+        # ── Logo ──
+        logo_pfad = Path(__file__).parent / "img" / "mitmachlotse.png"
+        lbl_logo = QLabel()
+        lbl_logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        if logo_pfad.exists():
+            pixmap = QPixmap(str(logo_pfad))
+            if not pixmap.isNull():
+                lbl_logo.setPixmap(pixmap.scaledToHeight(
+                    96, Qt.TransformationMode.SmoothTransformation))
+
         # ── Titel ──
         lbl_app = QLabel("<span style='font-size:22pt;font-weight:bold;color:#1F3864;'>"
                          "Mitmach-Lotse</span>")
@@ -1801,6 +1812,7 @@ class EinrichtungsassistentDialog(QDialog):
         lbl_hinweis.setWordWrap(True)
         lbl_hinweis.setTextFormat(Qt.TextFormat.RichText)
 
+        lay.addWidget(lbl_logo)
         lay.addWidget(lbl_app)
         lay.addWidget(lbl_untertitel)
         lay.addWidget(lbl_gruss)
