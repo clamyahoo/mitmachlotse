@@ -617,6 +617,12 @@ class TeilnehmerTable(QTableWidget):
         self._keys = []
         self._loading = False
         self._all_data = []
+        # Nach dem Speichern eines Wunsches soll die Markierung zum nächsten
+        # Wunschfeld derselben Zeile wandern (statt durch das Neuladen zurück
+        # auf die erste Spalte zu springen). Hier wird das Ziel gemerkt:
+        # (schueler_id, naechster_wunsch_key) -- ausgewertet in
+        # MainWindow._refresh_and_reselect nach dem Reload.
+        self._pending_wunsch_fokus = None
         self._rebuild_columns()
         self.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.setAlternatingRowColors(True)
@@ -726,7 +732,7 @@ class TeilnehmerTable(QTableWidget):
                 self.setItem(r, c, item)
         self._loading = False
 
-    def save_row(self, row: int):
+    def save_row(self, row: int, col: int = -1):
         if self._loading:
             return
         try:
@@ -734,6 +740,21 @@ class TeilnehmerTable(QTableWidget):
             if not id_item:
                 return
             schueler_id = int(id_item.text())
+
+            # Wurde ein Wunschfeld bearbeitet? Dann nach dem (durch changed →
+            # Reload ausgelösten) Neuaufbau die Markierung auf das nächste
+            # Wunschfeld derselben Person setzen. Nur innerhalb der Zeile
+            # (Wunsch 1→2→…→5); nach Wunsch 5 kein weiteres Vorrücken.
+            self._pending_wunsch_fokus = None
+            if 0 <= col < len(self._keys):
+                bearbeiteter_key = self._keys[col]
+                wunsch_keys = ["wunsch_1", "wunsch_2", "wunsch_3",
+                               "wunsch_4", "wunsch_5"]
+                if bearbeiteter_key in wunsch_keys:
+                    idx = wunsch_keys.index(bearbeiteter_key)
+                    if idx < 4:
+                        self._pending_wunsch_fokus = (
+                            schueler_id, wunsch_keys[idx + 1])
 
             # Felder aus der DB vorholen (enthält Felder die nicht in _keys sind)
             aktueller = db.get_teilnehmer_by_id(schueler_id)
@@ -1627,17 +1648,37 @@ class MainWindow(QMainWindow):
         """Nach save_row: Tabelle neu sortieren, zuletzt bearbeiteten TN wiederfinden."""
         # Aktuelle ID merken
         aktuell_id = self.teilnehmer_table.get_selected_id()
+        # Wurde gerade ein Wunschfeld gespeichert, soll die Markierung danach
+        # zum nächsten Wunschfeld derselben Person wandern (siehe
+        # TeilnehmerTable.save_row). Das Ziel vor dem Reload sichern, da load()
+        # es zurücksetzt.
+        pending = self.teilnehmer_table._pending_wunsch_fokus
         self._refresh_teilnehmer()
+        self.teilnehmer_table._pending_wunsch_fokus = None
         if aktuell_id is None:
             return
+        # Ziel-ID: bevorzugt die vom Wunsch-Fokus (falls die Auswahl durch das
+        # Speichern verloren ging), sonst die zuvor markierte Person.
+        ziel_id = pending[0] if pending else aktuell_id
         for row in range(self.teilnehmer_table.rowCount()):
             id_item = self.teilnehmer_table.item(row, 0)
-            if id_item and int(id_item.text()) == aktuell_id:
+            if id_item and int(id_item.text()) == ziel_id:
                 self.teilnehmer_table.selectRow(row)
                 self.teilnehmer_table.scrollToItem(
                     self.teilnehmer_table.item(row, 1),
                     QAbstractItemView.ScrollHint.PositionAtCenter
                 )
+                # Markierung auf das nächste Wunschfeld setzen und direkt zum
+                # Bearbeiten öffnen (flüssige Eingabe mehrerer Wünsche).
+                if pending:
+                    keys = self.teilnehmer_table._keys
+                    naechster_key = pending[1]
+                    if naechster_key in keys:
+                        wcol = keys.index(naechster_key)
+                        self.teilnehmer_table.setCurrentCell(row, wcol)
+                        item = self.teilnehmer_table.item(row, wcol)
+                        if item is not None:
+                            self.teilnehmer_table.editItem(item)
                 break
 
     def _refresh_teilnehmer(self):
@@ -1698,7 +1739,7 @@ class MainWindow(QMainWindow):
     def _erstelle_leere_db(self):
         """Gemeinsame Logik: neue leere DB in einem Temp-Verzeichnis."""
         import tempfile
-        tmp_path = Path(tempfile.gettempdir()) / "projekttage_neu.db"
+        tmp_path = Path(tempfile.gettempdir()) / "events_neu.db"
         if tmp_path.exists():
             tmp_path.unlink()
         db.DB_PATH = tmp_path
@@ -2628,44 +2669,67 @@ h2{{font-size:11pt}}</style></head><body>
                                    schueler["wunsch_3"], schueler["wunsch_4"],
                                    schueler["wunsch_5"]] if w != 0]
 
-        projekt_optionen = []
-        # Zuerst die gewählten Wünsche, in Wunschreihenfolge
-        for rang, p_nr in enumerate(wunsch_nrn, start=1):
-            p = projekte_dict.get(p_nr)
-            name = p["projektname"] if p else f"(unbekannte/r {self._get_pl()[0]})"
-            projekt_optionen.append((f"Wunsch {rang}: {p_nr} – {name}", p_nr))
+        # Sentinel-Rückgabewert für den Eintrag „… erzwingen": kein Projekt,
+        # sondern die Aufforderung, die Liste um die nicht gewünschten
+        # Optionen zu erweitern (siehe Schleife unten).
+        ERZWINGEN = "__erzwingen__"
 
-        if not nur_wunschprojekte:
-            # Trennlinie + restliche Projekte, falls die Person z. B. einen
-            # nicht gewünschten Ausweichplatz braucht
-            uebrige = [p for p in alle_projekte if p["nummer"] not in wunsch_nrn]
-            if uebrige and wunsch_nrn:
-                projekt_optionen.append((f"── Weitere {self._get_pl()[2]} (kein Wunsch) ──", None))
-            for p in uebrige:
-                projekt_optionen.append((f"{p['nummer']}: {p['projektname']}", p["nummer"]))
+        def baue_optionen(zeige_alle: bool) -> list:
+            opts = []
+            # Zuerst die gewählten Wünsche, in Wunschreihenfolge
+            for rang, p_nr in enumerate(wunsch_nrn, start=1):
+                p = projekte_dict.get(p_nr)
+                name = p["projektname"] if p else f"(unbekannte/r {self._get_pl()[0]})"
+                opts.append((f"Wunsch {rang}: {p_nr} – {name}", p_nr))
+            # Restliche (nicht gewünschte) Optionen -- nur wenn gewünscht oder
+            # wenn die Person gar keinen Wunsch abgegeben hat (sonst keine
+            # Zuteilung möglich)
+            if zeige_alle or not wunsch_nrn:
+                uebrige = [p for p in alle_projekte if p["nummer"] not in wunsch_nrn]
+                if uebrige and wunsch_nrn:
+                    opts.append((f"── Weitere {self._get_pl()[2]} (kein Wunsch) ──", None))
+                for p in uebrige:
+                    opts.append((f"{p['nummer']}: {p['projektname']}", p["nummer"]))
+            return opts
 
-        if not wunsch_nrn:
-            # Kein Wunsch vorhanden -> in jedem Fall alle Projekte anbieten,
-            # da sonst keine Zuteilung möglich wäre
-            projekt_optionen = [(f"{p['nummer']}: {p['projektname']}", p["nummer"])
-                                for p in alle_projekte]
+        # Startzustand: aus dem Menü (nur_wunschprojekte=False) direkt die
+        # vollständige Liste, aus den Listenfenstern zunächst nur die Wünsche.
+        zeige_alle = not nur_wunschprojekte
+        while True:
+            projekt_optionen = baue_optionen(zeige_alle)
 
-        # Immer am Ende: Zuteilung aufheben (Projekt 0)
-        if projekt_optionen:
-            projekt_optionen.append(("── ──", None))  # Trennlinie
-        _pl_kein, _f_kein, _ = self._get_pl()
-        projekt_optionen.append((f"0 – {_f_kein['kein']} {_pl_kein} (Zuweisung aufheben)", 0))
+            # „Zuteilung zu einer anderen Option erzwingen": nur anbieten,
+            # solange die kurze Wunschliste gezeigt wird und es überhaupt
+            # weitere Optionen zum Einblenden gibt.
+            if (not zeige_alle and wunsch_nrn
+                    and any(p["nummer"] not in wunsch_nrn for p in alle_projekte)):
+                pl_label, formen, _ = self._get_pl()
+                andere = ("einer anderen" if formen["dativ_art"] == "zur"
+                          else "einem anderen")
+                projekt_optionen.append(
+                    (f"➕ Zuteilung zu {andere} {pl_label} erzwingen …", ERZWINGEN))
 
-        dlg = ProjektZuweisungDialog(
-            f"{schueler['nachname']}, {schueler['vorname']}",
-            projekt_optionen, self
-        )
-        if dlg.exec() != QDialog.DialogCode.Accepted:
-            return
+            # Immer am Ende: Zuteilung aufheben (Projekt 0)
+            if projekt_optionen:
+                projekt_optionen.append(("── ──", None))  # Trennlinie
+            _pl_kein, _f_kein, _ = self._get_pl()
+            projekt_optionen.append((f"0 – {_f_kein['kein']} {_pl_kein} (Zuweisung aufheben)", 0))
 
-        gewaehlte_nr = dlg.get_projekt_nummer()
-        if gewaehlte_nr is None:
-            return  # Trennlinie ausgewählt -- nichts tun
+            dlg = ProjektZuweisungDialog(
+                f"{schueler['nachname']}, {schueler['vorname']}",
+                projekt_optionen, self
+            )
+            if dlg.exec() != QDialog.DialogCode.Accepted:
+                return
+
+            gewaehlte_nr = dlg.get_projekt_nummer()
+            if gewaehlte_nr is None:
+                return  # Trennlinie ausgewählt -- nichts tun
+            if gewaehlte_nr == ERZWINGEN:
+                # Liste um die übrigen Optionen erweitern und Dialog erneut zeigen
+                zeige_alle = True
+                continue
+            break
 
         db.set_angebot_for_teilnehmer(sid, gewaehlte_nr, manuell=(gewaehlte_nr != 0))
         self._refresh_teilnehmer()
@@ -2805,7 +2869,7 @@ h2{{font-size:11pt}}</style></head><body>
         errors = []
         for fmt in formate:
             try:
-                fname = f"projekttage_{sort_mode}.{fmt}"
+                fname = f"events_{sort_mode}.{fmt}"
                 fpath = os.path.join(export_dir, fname)
                 if fmt == "txt":
                     headers, rows = ie.get_export_data(sort_mode, mit_wuenschen)
