@@ -609,7 +609,8 @@ def _build_teilnehmer_headers_keys():
 class TeilnehmerTable(QTableWidget):
     # "name" ist ein Anzeige-Feld (Nachname, Vorname kombiniert), kein DB-Feld
 
-    changed = pyqtSignal()
+    changed = pyqtSignal()       # strukturelle Änderung -> Tabelle neu laden/sortieren
+    gespeichert = pyqtSignal()   # leichte Änderung (z. B. Wunsch) -> nur Speicher-Signal
 
     def __init__(self, parent=None):
         super().__init__(0, 11, parent)
@@ -617,12 +618,6 @@ class TeilnehmerTable(QTableWidget):
         self._keys = []
         self._loading = False
         self._all_data = []
-        # Nach dem Speichern eines Wunsches soll die Markierung zum nächsten
-        # Wunschfeld derselben Zeile wandern (statt durch das Neuladen zurück
-        # auf die erste Spalte zu springen). Hier wird das Ziel gemerkt:
-        # (schueler_id, naechster_wunsch_key) -- ausgewertet in
-        # MainWindow._refresh_and_reselect nach dem Reload.
-        self._pending_wunsch_fokus = None
         self._rebuild_columns()
         self.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.setAlternatingRowColors(True)
@@ -741,21 +736,6 @@ class TeilnehmerTable(QTableWidget):
                 return
             schueler_id = int(id_item.text())
 
-            # Wurde ein Wunschfeld bearbeitet? Dann nach dem (durch changed →
-            # Reload ausgelösten) Neuaufbau die Markierung auf das nächste
-            # Wunschfeld derselben Person setzen. Nur innerhalb der Zeile
-            # (Wunsch 1→2→…→5); nach Wunsch 5 kein weiteres Vorrücken.
-            self._pending_wunsch_fokus = None
-            if 0 <= col < len(self._keys):
-                bearbeiteter_key = self._keys[col]
-                wunsch_keys = ["wunsch_1", "wunsch_2", "wunsch_3",
-                               "wunsch_4", "wunsch_5"]
-                if bearbeiteter_key in wunsch_keys:
-                    idx = wunsch_keys.index(bearbeiteter_key)
-                    if idx < 4:
-                        self._pending_wunsch_fokus = (
-                            schueler_id, wunsch_keys[idx + 1])
-
             # Felder aus der DB vorholen (enthält Felder die nicht in _keys sind)
             aktueller = db.get_teilnehmer_by_id(schueler_id)
             if not aktueller:
@@ -825,8 +805,19 @@ class TeilnehmerTable(QTableWidget):
                 self._loading = False
 
             db.update_teilnehmer(schueler_id, data)
-            # Signal auslösen → Hauptfenster kann neu sortieren
-            self.changed.emit()
+
+            # Nur bei sortierrelevanten Feldern (Name/Stufe/Zusatz) die Tabelle
+            # neu laden und -sortieren -- das setzt zwangsläufig die Markierung
+            # zurück. Bei allen anderen Bearbeitungen (v. a. Wünsche) NICHT neu
+            # laden, damit die native Tab-Navigation flüssig eine Zelle
+            # weiterrückt (sonst würde der Reload die Markierung verwerfen und
+            # zusätzlich mit Qts Tab-Sprung zu einem Doppelsprung führen).
+            bearbeiteter_key = self._keys[col] if 0 <= col < len(self._keys) else ""
+            strukturell = bearbeiteter_key in ("name", "stufe", "stufenzusatz")
+            if strukturell:
+                self.changed.emit()      # → Reload + Neusortierung im Hauptfenster
+            else:
+                self.gespeichert.emit()  # → nur Speicher-Signal, kein Reload
 
         except Exception as e:
             import traceback
@@ -1214,6 +1205,9 @@ class MainWindow(QMainWindow):
         self.teilnehmer_table.cellChanged.connect(self.teilnehmer_table.save_row)
         self.teilnehmer_table.changed.connect(self._refresh_and_reselect)
         self.teilnehmer_table.changed.connect(self._signal_gespeichert)
+        # Leichte Änderungen (v. a. Wünsche) lösen kein Neuladen aus, nur das
+        # Speicher-Signal -- so bleibt die native Tab-Navigation flüssig.
+        self.teilnehmer_table.gespeichert.connect(self._signal_gespeichert)
         sl.addWidget(self.teilnehmer_table)
         self.tabs.addTab(teilnehmer_tab, "Teilnehmer/innen")
         self.tabs.setTabIcon(0, QIcon.fromTheme("system-users",
@@ -1645,40 +1639,23 @@ class MainWindow(QMainWindow):
             self.raumplan_table.refresh_aus_optionen()
 
     def _refresh_and_reselect(self):
-        """Nach save_row: Tabelle neu sortieren, zuletzt bearbeiteten TN wiederfinden."""
+        """Nach struktureller save_row: Tabelle neu sortieren, zuletzt
+        bearbeiteten TN wiederfinden. Wird nur bei sortierrelevanten
+        Änderungen (Name/Stufe/Zusatz) aufgerufen -- reine Wunsch-Edits laden
+        bewusst nicht neu (siehe TeilnehmerTable.save_row)."""
         # Aktuelle ID merken
         aktuell_id = self.teilnehmer_table.get_selected_id()
-        # Wurde gerade ein Wunschfeld gespeichert, soll die Markierung danach
-        # zum nächsten Wunschfeld derselben Person wandern (siehe
-        # TeilnehmerTable.save_row). Das Ziel vor dem Reload sichern, da load()
-        # es zurücksetzt.
-        pending = self.teilnehmer_table._pending_wunsch_fokus
         self._refresh_teilnehmer()
-        self.teilnehmer_table._pending_wunsch_fokus = None
         if aktuell_id is None:
             return
-        # Ziel-ID: bevorzugt die vom Wunsch-Fokus (falls die Auswahl durch das
-        # Speichern verloren ging), sonst die zuvor markierte Person.
-        ziel_id = pending[0] if pending else aktuell_id
         for row in range(self.teilnehmer_table.rowCount()):
             id_item = self.teilnehmer_table.item(row, 0)
-            if id_item and int(id_item.text()) == ziel_id:
+            if id_item and int(id_item.text()) == aktuell_id:
                 self.teilnehmer_table.selectRow(row)
                 self.teilnehmer_table.scrollToItem(
                     self.teilnehmer_table.item(row, 1),
                     QAbstractItemView.ScrollHint.PositionAtCenter
                 )
-                # Markierung auf das nächste Wunschfeld setzen und direkt zum
-                # Bearbeiten öffnen (flüssige Eingabe mehrerer Wünsche).
-                if pending:
-                    keys = self.teilnehmer_table._keys
-                    naechster_key = pending[1]
-                    if naechster_key in keys:
-                        wcol = keys.index(naechster_key)
-                        self.teilnehmer_table.setCurrentCell(row, wcol)
-                        item = self.teilnehmer_table.item(row, wcol)
-                        if item is not None:
-                            self.teilnehmer_table.editItem(item)
                 break
 
     def _refresh_teilnehmer(self):
