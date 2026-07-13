@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mitmach-Lotse (Web)</title>
+<link rel="stylesheet" href="style.css">
+<!-- sql.js (SQLite als WebAssembly) — wird sofort gebraucht (.plf lesen/schreiben) -->
+<script src="https://cdn.jsdelivr.net/npm/sql.js@1.10.2/dist/sql-wasm.min.js"></script>
+</head>
+<body>
+<header>
+  <div class="titelzeile">
+    <span class="app-titel">Mitmach-Lotse <small>Web</small></span>
+    <span id="dateiname" class="dateiname">(keine Planungsmappe)</span>
+    <span id="dirty-badge" class="dirty-badge" hidden>ungespeicherte Änderungen</span>
+    <span id="kontext-badge" class="kontext-badge" title="Betriebsart: lokal, ohne Anmeldung. Alle Daten bleiben auf diesem Gerät."></span>
+  </div>
+  <div class="toolbar">
+    <button id="btn-neu">Neue Planungsmappe</button>
+    <button id="btn-oeffnen">Öffnen (.plf)</button>
+    <button id="btn-speichern" disabled>Speichern</button>
+    <button id="btn-speichern-als" disabled>Speichern als …</button>
+    <input type="file" id="datei-input" accept=".plf,.db,.sqlite" hidden>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="tab aktiv" data-tab="teilnehmer">Teilnehmer/innen</button>
+  <button class="tab" data-tab="optionen" id="tab-btn-optionen">Optionen</button>
+  <button class="tab" data-tab="zuteilung">Zuteilung &amp; Auswertung</button>
+</nav>
+
+<main>
+  <!-- ── Tab 1: Teilnehmer ── -->
+  <section id="tab-teilnehmer" class="tab-inhalt aktiv">
+    <div class="aktionszeile">
+      <button id="btn-tn-neu" disabled>+ Teilnehmer/in</button>
+      <button id="btn-tn-loeschen" disabled>✗ Markierte löschen</button>
+      <input type="search" id="tn-suche" placeholder="Suchen (Name, Gruppe) …" disabled>
+      <span id="tn-anzahl" class="anzahl"></span>
+    </div>
+    <div class="tabellen-scroll">
+      <table id="tn-tabelle"><thead></thead><tbody></tbody></table>
+    </div>
+  </section>
+
+  <!-- ── Tab 2: Optionen ── -->
+  <section id="tab-optionen" class="tab-inhalt">
+    <div class="aktionszeile">
+      <button id="btn-opt-neu" disabled>+ Option</button>
+      <button id="btn-opt-loeschen" disabled>✗ Markierte löschen</button>
+      <span id="opt-anzahl" class="anzahl"></span>
+    </div>
+    <div class="tabellen-scroll">
+      <table id="opt-tabelle"><thead></thead><tbody></tbody></table>
+    </div>
+  </section>
+
+  <!-- ── Tab 3: Zuteilung & Auswertung ── -->
+  <section id="tab-zuteilung" class="tab-inhalt">
+    <div class="karte" id="karte-zuteilen">
+      <h2>Automatisch zuweisen</h2>
+      <p class="hinweis">Nutzt exakt dieselben, unveränderten Algorithmen wie die
+        Desktop-App (Min-Cost-Max-Flow). Beim ersten Lauf wird einmalig die
+        Python-Umgebung geladen (~10&nbsp;MB) — danach ist sie sofort verfügbar.</p>
+      <div class="aktionszeile">
+        <button id="btn-algo-a" disabled>Algorithmus A (Wunsch-Priorität)</button>
+        <button id="btn-algo-b" disabled>Algorithmus B (Mindest-TN-Priorität)</button>
+        <button id="btn-algo-c" disabled>Algorithmus C (Alle versorgen)</button>
+        <button id="btn-zuteilung-aufheben" disabled>Automatische Zuweisung aufheben</button>
+      </div>
+      <div id="solver-status" class="solver-status" hidden></div>
+    </div>
+
+    <div class="karte">
+      <h2>Wunschstatistik</h2>
+      <table id="statistik-tabelle" class="kompakt"><thead></thead><tbody></tbody></table>
+    </div>
+
+    <div class="karte">
+      <h2 id="uebersicht-titel">Belegungsübersicht</h2>
+      <table id="uebersicht-tabelle" class="kompakt"><thead></thead><tbody></tbody></table>
+    </div>
+
+    <div class="karte">
+      <h2>Export</h2>
+      <div class="aktionszeile">
+        <button id="btn-csv-gesamt" disabled>Gesamtliste als CSV</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer><span id="status">Bereit.</span></footer>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

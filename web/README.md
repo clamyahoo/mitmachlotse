@@ -1,0 +1,72 @@
+# Mitmach-Lotse — Web-Version (Prototyp)
+
+Browserbasierte Variante von Mitmach-Lotse: Daten eingeben, Planungsmappe
+(`.plf`) lokal öffnen/speichern und die automatische Zuteilung laufen lassen —
+**ohne Server-Datenhaltung**. Der Webserver liefert nur den Programmcode aus;
+alle Daten bleiben im Browser bzw. in der lokal gespeicherten Datei.
+
+## Starten
+
+Die Seite muss aus dem **Repository-Wurzelverzeichnis** ausgeliefert werden
+(der Solver holt die Python-Module `database.py`, `algorithmen.py`,
+`_zuteilungsplaner.py`, `_mcmf.py` per `fetch` aus `../`):
+
+```bash
+cd mitmachlotse           # Repo-Root
+python3 -m http.server 8000
+# dann im Browser: http://localhost:8000/web/
+```
+
+Internetzugang wird beim Start (sql.js von CDN) und beim ersten
+Zuteilungslauf (Pyodide von CDN, ~10 MB) benötigt. Danach cached der Browser.
+
+## Architektur
+
+| Datei | Aufgabe |
+|---|---|
+| `index.html` / `style.css` | Oberfläche (drei Tabs, an die Desktop-Optik angelehnt) |
+| `js/app.js` | UI-Logik: Tabellen, Datei-Öffnen/Speichern, Verkabelung |
+| `js/db.js` | SQLite im Browser (sql.js); **1:1 das Desktop-Schema** → `.plf` ist mit der Desktop-App austauschbar |
+| `js/solver.js` | Lädt Pyodide **lazy** (erst beim Klick auf „Automatisch zuweisen") und führt die **unveränderten** Desktop-Algorithmen aus |
+| `js/kontext.js` | Kontext-Schicht: Nutzer/Rolle/Gruppen — heute „lokal, ohne Anmeldung", vorbereitet für Server-Login und Moodle/LTI |
+| `js/csv.js` | Einfacher CSV-Export |
+
+### Warum Pyodide für den Solver?
+
+`_mcmf.py` (Min-Cost-Max-Flow) ist korrektheitskritisch und in der Desktop-App
+gründlich getestet. Statt ihn nach JavaScript zu portieren (Risiko subtiler
+Fehler, doppelte Pflege), laufen exakt dieselben Dateien im Browser: Die
+aktuellen DB-Bytes werden ins Pyodide-Dateisystem geschrieben, `db.DB_PATH`
+darauf gesetzt, `algorithmus_a/b/c` + `apply_ergebnis` unverändert ausgeführt
+und die geänderten Bytes zurückgelesen. **Eine Quelle der Wahrheit.**
+
+### Kontext-Schicht (wichtig für spätere Ausbaustufen)
+
+Die UI fragt Rechte nie direkt ab, sondern immer über `Kontext` in
+`kontext.js` (`darfTeilnehmerSehen`, `darfZuteilen`, …). Heute liefert die
+Betriebsart „lokal" überall `true`. Später kann der Kontext aus drei Quellen
+befüllt werden, ohne die App umzubauen:
+
+1. **lokal** — heutiger Zustand, kein Login
+2. **server** — eigener Server mit Nutzerverwaltung
+3. **lti** — Start aus Moodle (LTI 1.3): Nutzer, Rolle und Gruppen kommen
+   fertig aus dem signierten Launch
+
+„Kein Login" ist also bewusst **nicht** fest verdrahtet.
+
+## Was der Prototyp kann
+
+- Neue Planungsmappe anlegen, `.plf`/`.db` öffnen und speichern
+  (Chrome/Edge: direkt in die Datei; Firefox/Safari: über den Download-Ordner)
+- Teilnehmer/innen und Optionen anlegen, bearbeiten, löschen, suchen
+- Konfigurierte Bezeichnungen und Wunschanzahl aus der `.plf` werden
+  übernommen (z. B. aus der Desktop-App konfigurierte Labels)
+- Automatische Zuteilung mit Algorithmus A/B/C, Zuweisung aufheben,
+  Fixierungen (werden vom Algorithmus respektiert — derselbe Code wie Desktop)
+- Wunschstatistik, Belegungsübersicht, CSV-Export der Gesamtliste
+
+## Was (noch) fehlt
+
+- CSV/xlsx/ods-**Import** (dafür die Desktop-App nutzen — die `.plf` ist
+  kompatibel), Raumplan, Listen-Druck/PDF, Nachbearbeitungsmodus-Anzeige,
+  Beispieldaten-Menü
