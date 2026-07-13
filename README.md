@@ -31,9 +31,14 @@ zurück auf die Tabelle. Eine Sucheingabe schaltet automatisch auf Tab 1 um.
 Tabellarische Verwaltung aller Teilnehmer/innen. Spalten: Name, Gruppenbereich,
 Gruppenzusatz, Wünsche 1–n (konfigurierbare Anzahl), aktuelle Zuteilung, Fixiert.
 Buttons: `+ Hinzufügen`, `✗ Zeile löschen`, `[Begriff] fix zuweisen`, `✗ Fixierung aufheben`.
-Tab-Taste springt innerhalb der Wunschfelder von W1 → W2 → … → Wn → nächste Zeile W1.
-Nach jeder Zellenänderung wird die Tabelle automatisch neu sortiert und der
-bearbeitete Eintrag bleibt markiert.
+Beim Bearbeiten eines Wunschfelds (Wert eintippen, dann Tab) rückt die
+Markierung genau ein Feld weiter (W1 → W2 → … → Wn); bei reiner Navigation
+ohne Bearbeitung springt Tab von Wn zur ersten Wunschspalte der nächsten
+Zeile. Wunsch-Änderungen werden sofort gespeichert, lösen aber **kein**
+Neuladen/Neusortieren aus, damit die Eingabe mehrerer Wünsche hintereinander
+flüssig bleibt. Nur bei Änderungen an Name, Gruppenbereich oder
+Gruppenzusatz wird die Tabelle automatisch neu sortiert; der bearbeitete
+Eintrag bleibt dabei markiert.
 
 **Tab 2 – Optionen** *(Bezeichnung konfigurierbar)*
 Verwaltung aller Angebote: Nr., Leitung/Ansprechperson (optional), Optionsname,
@@ -52,12 +57,16 @@ Räumliche und zeitliche Organisation der Optionen.
   automatisch ins Spaltenzuordnungsfenster.
 - **Raumzuordnung** (unten): je Option ein **Raum** (Auswahlliste) und eine
   **Zeit** zuordnen. Angezeigt werden zusätzlich Plätze max und aktuelle
-  Belegung. **Konflikte werden farbig markiert** und in der Hinweisspalte
-  erklärt: rot bei **Doppelbelegung** (derselbe Raum zur selben Zeit für mehrere
-  Optionen), orange bei **Kapazitätsproblemen** (Raum kleiner als Belegung bzw.
-  als die geplanten Plätze). Die Hinweise sind bewusst nur Warnungen, keine
-  Sperren. Buttons `Exportieren`, `Drucken`, `Druckvorschau` erzeugen einen
-  fertigen Raumplan (mit Feldauswahl, s. u.).
+  Belegung. Ein Raum darf zwei Optionen nur zugeordnet werden, wenn **beide**
+  eine Zeit eingetragen haben **und** sich diese unterscheiden — andernfalls
+  wird die Zuweisung **direkt verhindert** (Warnmeldung, Auswahl springt
+  zurück). Doppelbelegungen können über die Oberfläche also gar nicht mehr neu
+  entstehen; die Hinweisspalte bleibt trotzdem als Warnung bestehen (rot bei
+  **Doppelbelegung**, orange bei **Kapazitätsproblemen** — Raum kleiner als
+  Belegung bzw. als die geplanten Plätze) und greift, falls ein Konflikt
+  bereits in importierten oder älteren Daten steckt. Buttons `Exportieren`,
+  `Drucken`, `Druckvorschau` erzeugen einen fertigen Raumplan (mit
+  Feldauswahl, s. u.).
 - **Räume automatisch zuweisen**: verteilt die Räume automatisch auf die
   Optionen. Gruppiert nach der eingetragenen **Zeit** (gleiche Zeit = verschiedene
   Räume, verschiedene Zeiten dürfen denselben Raum nutzen) und wählt je Option
@@ -195,6 +204,23 @@ Soft-Kriterien: Gruppenkohäsion (gleiche Stufe + Zusatz) und Freundeserkennung
 
 ---
 
+## Beispieldaten ausprobieren
+
+Unter **Hilfe → Beispieldaten ausprobieren** lässt sich die App unverbindlich
+ausprobieren, ohne eigene Daten anzulegen:
+
+- **Beispiel-Planungsmappe öffnen** (ausgefüllt, bereit zum Zuteilen) — öffnet
+  eine temporäre Kopie einer fertig eingerichteten Beispielmappe inkl. Optionen
+  und Teilnehmer/innen, direkt bereit für einen Algorithmus-Testlauf. Wer das
+  Beispiel dauerhaft behalten möchte, nutzt anschließend „Planungsmappe
+  speichern als".
+- **Beispiel-Teilnehmerliste importieren** / **Beispiel-Optionsliste
+  importieren** — importiert direkt (nicht exportiert) eine Beispieldatei in
+  die aktuell geöffnete Planungsmappe über das gewohnte
+  Spaltenzuordnungsfenster, um den Import-Workflow selbst auszuprobieren.
+
+---
+
 ## Einrichtungsassistent für neue Planungsmappen
 
 Bei einer leeren Planungsmappe (Neuanlage oder erster Start) öffnet sich
@@ -218,6 +244,8 @@ Unter **Datei → Spaltenbezeichnungen anpassen** (`Strg+B`):
 - **Optionale Zusatzfelder Teilnehmer/innen** (bis zu 3, leer = ausgeblendet)
 - **Veranstaltungsleitung / Ansprechperson** (leer = Spalte ausgeblendet)
 - **Optionale Zusatzfelder Optionen** (bis zu 3, leer = ausgeblendet)
+- **Optionales Zusatzfeld Raumzuordnung** (leer = Spalte im Raumplan-Tab
+  ausgeblendet, z. B. für zusätzliche Angaben wie Gebäude/Stockwerk)
 
 Alle Buttons, Menüs, Dialoge und Listenfenster passen sich automatisch an —
 inklusive korrekter Grammatik (Genusanpassung, Fugen-S, Plural, Artikelwahl).
@@ -271,7 +299,11 @@ Beim Import öffnet sich das **Spaltenzuordnungsfenster**:
     aktualisiert sich bei jeder Änderung in den Zuordnungs-Dropdowns,
     sodass auch vertauschte Zuordnungen sofort an den angezeigten Werten
     erkennbar sind.
-- **Anhängen oder Ersetzen**: Checkbox „Bestehende Daten behalten".
+- **Anhängen oder Ersetzen**: Checkbox „Bestehende Daten behalten (anhängen
+  statt ersetzen)". Beim Anhängen von Optionen überschreibt eine in der
+  Quelldatei vorkommende Nummer nie eine bereits vorhandene Option — bei
+  Kollision oder fehlender Nummer wird automatisch fortlaufend
+  weiternummeriert.
 
 **Wunschanzahl-Erkennung**: Wenn die Quelldatei eine andere Anzahl Wunschspalten
 enthält, erscheint eine Rückfrage — Planungsmappe beibehalten oder anpassen.
@@ -338,7 +370,13 @@ es dort immer nur eine einzige Liste gibt.
 ## Manuelle Zuteilung und Fixierungen
 
 - **fix zuweisen** (`Strg+Shift+F`): manuell einer markierten Person eine Option
-  zuweisen. Diese Zuteilung wird durch Algorithmen nicht überschrieben.
+  zuweisen. Diese Zuteilung wird durch Algorithmen nicht überschrieben. Aus
+  der Teilnehmer/innentabelle und den Listenfenstern heraus zeigt der
+  Auswahldialog zunächst nur die von der Person gewählten Wunschoptionen. Ein
+  zusätzlicher Eintrag **„Zuteilung zu einer anderen Option erzwingen …"**
+  (Formulierung passt sich grammatikalisch an den konfigurierten Begriff an)
+  blendet bei Bedarf alle übrigen, nicht gewünschten Optionen mit ein, statt
+  die kurze Liste standardmäßig zu überladen.
 - **Fixierung aufheben** (`Strg+Shift+R`)
 - **Alle fixen Zuweisungen löschen**
 - **Automatische Zuweisung aufheben**
@@ -356,13 +394,16 @@ gemacht — ohne den Algorithmus oder die Raumzuteilung zu beeinflussen:
   Gesamtliste-Export nach Gruppen) zeigt die Zuteilungsspalte bei geänderten
   Personen die **alte Nummer durchgestrichen → neue Nummer** und ist farblich
   hervorgehoben.
-- In den **Teilnehmerlisten einer Option** wird jede Umverteilung von beiden
-  Seiten sichtbar: Personen, die zur Basis-Zeit dort waren, jetzt aber woanders
-  zugeteilt sind, erscheinen **durchgestrichen am Ende der Liste** als Hinweis
-  („war hier"); **neu hinzugekommene** Personen sind **gelb hervorgehoben** und
-  tragen im Feld „Wunschrang erhalten" den Vermerk „… · neu (vorher: N)", so
-  dass man sofort sieht, wer neu ist und woher er/sie kommt. Nur die
-  durchgestrichenen Abgänge zählen nicht zur aktuellen Teilnehmerzahl.
+- In den **Teilnehmerlisten einer Option** (sowohl im eigenen Listenfenster
+  als auch in der **Gesamtliste-Export nach Optionen**, jeweils gruppenweise)
+  wird jede Umverteilung von beiden Seiten sichtbar: Personen, die zur
+  Basis-Zeit dort waren, jetzt aber woanders zugeteilt sind, erscheinen
+  **durchgestrichen am Ende der Gruppe** als Hinweis („verlassen"); **neu
+  hinzugekommene** Personen sind **gelb hervorgehoben** und tragen einen
+  Vermerk zu ihrer Herkunft ("… · neu (vorher: N)" bzw. eigene Spalte
+  „Änderung" im Gesamtlisten-Export), so dass man sofort sieht, wer neu ist
+  und woher er/sie kommt. Nur die durchgestrichenen Abgänge zählen nicht zur
+  aktuellen Teilnehmerzahl.
 - Über **Einteilung → Übersicht der Änderungen** öffnet sich eine Liste, die
   **alle umverteilten Teilnehmer/innen auf einen Blick** zeigt (Name, Gruppe,
   Vorher, Jetzt, erhaltener Wunschrang) — bequem druck- und exportierbar.
@@ -441,12 +482,14 @@ möchten.
 
 1. **Export**: Auswertungs-Tab → „Gesamtliste nach Gruppen exportieren",
    Format **Excel (.xlsx)** oder **OpenDocument (.ods)**, „Jede Gruppe als
-   separate Datei" → ZIP oder Ordner. Für diesen Rückweg (Export → Ausfüllen
-   → Reimport) sind die Vorgaben bereits sinnvoll voreingestellt: „Wünsche
-   mit einbeziehen" und „Seitenumbruch nach jeder Gruppe" an, „Datum in der
-   Fußzeile" aus. Die Kopfzeile (z. B. Veranstaltungsname) bleibt sichtbar
-   und gibt ausfüllenden Personen (z. B. Klassenlehrkräften) Orientierung —
-   sie wird beim Reimport automatisch erkannt und übersprungen (s. o.).
+   separate Datei" → ZIP oder Ordner. Die Wunschspalten sind dabei immer
+   enthalten — welche Spalten in der Ausgabe tatsächlich erscheinen,
+   entscheidet die anschließende Feldauswahl (s. o.). Für diesen Rückweg
+   (Export → Ausfüllen → Reimport) ist „Seitenumbruch nach jeder Gruppe"
+   bereits sinnvoll voreingestellt, „Datum in der Fußzeile" aus. Die
+   Kopfzeile (z. B. Veranstaltungsname) bleibt sichtbar und gibt
+   ausfüllenden Personen (z. B. Klassenlehrkräften) Orientierung — sie wird
+   beim Reimport automatisch erkannt und übersprungen (s. o.).
 2. **Ausfüllen**: Wunschspalten werden von Tutoren oder TN eingetragen —
    sowohl .xlsx- als auch .ods-Dateien lassen sich mit Excel, LibreOffice
    Calc oder anderer Tabellenkalkulation bearbeiten
@@ -511,6 +554,7 @@ importexport.py          Import (CSV/xlsx/ods) und Export (xlsx/ods/csv/pdf), Sp
 listenabfragen.py        DB-Abfragen für Listen- und Qualitätsprüfungsfenster
 listenfenster.py         Nicht-modales Listenfenster
 validierung.py           Prüfung auf zulässige Wünsche und Raumkonflikte
+raumzuteilung.py         Automatische Raumzuteilung (Greedy First-Fit-Decreasing)
 build_scripts/           Build-Skripte für alle Plattformen
 README.md                Diese Datei
 ```
