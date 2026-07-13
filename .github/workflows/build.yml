@@ -1,0 +1,36 @@
+name: Build Windows EXE
+
+on:
+  push:
+    branches: [ main, master ] # Startet den Build automatisch bei jedem Push
+  workflow_dispatch:          # Erlaubt es, den Build manuell auf GitHub zu starten
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Code auschecken
+      uses: actions/checkout@v4
+
+    - name: Python installieren
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11' # Ersetzen Sie dies falls Sie eine andere Version nutzen
+
+    - name: PyInstaller und Abhängigkeiten installieren
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyinstaller
+        if (Test-Path requirements.txt) { pip install -r requirements.txt }
+
+    - name: Skript ausführen
+      run: |
+        cd build_scripts
+        .\build_windows.bat
+
+    - name: EXE-Datei als Artefakt hochladen
+      uses: actions/upload-artifact@v4
+      with:
+        name: Mitmach-Lotse-Windows
+        path: build_scripts/dist/windows/Mitmach-Lotse.exe
