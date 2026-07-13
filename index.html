@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mitmach-Lotse</title>
+<style>
+  body {
+    font-family: Arial, "Segoe UI", sans-serif;
+    background: #f5f5f5;
+    color: #222;
+    margin: 0;
+    padding: 40px 20px;
+    display: flex;
+    justify-content: center;
+  }
+  main { max-width: 640px; }
+  h1 { color: #2c3e50; margin-bottom: 4px; }
+  .untertitel { color: #666; margin-top: 0; }
+  .karte {
+    background: white;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    padding: 18px 20px;
+    margin-bottom: 16px;
+  }
+  .karte h2 { margin-top: 0; font-size: 16px; color: #2c3e50; }
+  a.button {
+    display: inline-block;
+    background: #2980b9;
+    color: white;
+    text-decoration: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-size: 14px;
+  }
+  a.button:hover { background: #3498db; }
+  .hinweis { font-size: 13px; color: #666; }
+  code { background: #eee; padding: 1px 5px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Mitmach-Lotse</h1>
+  <p class="untertitel">Verwaltung und Zuteilung von Teilnehmer/innen zu Optionen,
+    Projekten, Workshops oder ähnlichen Gruppenveranstaltungen.</p>
+
+  <div class="karte">
+    <h2>🖥️ Desktop-App</h2>
+    <p>Die vollständige Anwendung (alle Funktionen: Import/Export, Raumplan,
+      Nachbearbeitungsmodus, Listenfenster u.&nbsp;v.&nbsp;m.) — als Python/PyQt6-App
+      oder fertiges AppImage.</p>
+    <a class="button" href="https://github.com/clamyahoo/mitmachlotse">Zum Repository</a>
+  </div>
+
+  <div class="karte">
+    <h2>🌐 Web-Version (früher Prototyp)</h2>
+    <p>Läuft direkt im Browser, keine Installation nötig. Nutzt exakt dieselben,
+      unveränderten Zuteilungs-Algorithmen wie die Desktop-App (via Pyodide).
+      Alle Daten bleiben auf deinem Gerät — nichts wird an einen Server
+      geschickt.</p>
+    <p class="hinweis">Noch nicht der volle Funktionsumfang der Desktop-App:
+      kein Datei-Import, kein Raumplan, kein Druck/PDF-Export. Details siehe
+      <code>web/README.md</code> im Repository.</p>
+    <a class="button" href="web/">Web-Version ausprobieren</a>
+  </div>
+</main>
+</body>
+</html>
