@@ -29,8 +29,11 @@ jobs:
         cd build_scripts
         .\build_windows.bat
 
-    - name: EXE-Datei als Artefakt hochladen
+    - name: Programm-Ordner als Artefakt hochladen
+      # Onedir-Build: der GANZE Ordner (Mitmach-Lotse.exe + Unterordner
+      # _internal mit den DLLs) muss zusammenbleiben. upload-artifact packt
+      # den Ordnerinhalt automatisch in ein ZIP zum Herunterladen.
       uses: actions/upload-artifact@v4
       with:
         name: Mitmach-Lotse-Windows
-        path: build_scripts/dist/windows/Mitmach-Lotse.exe
+        path: build_scripts/dist/windows/Mitmach-Lotse/
