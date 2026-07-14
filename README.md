@@ -57,16 +57,17 @@ Räumliche und zeitliche Organisation der Optionen.
   automatisch ins Spaltenzuordnungsfenster.
 - **Raumzuordnung** (unten): je Option ein **Raum** (Auswahlliste) und eine
   **Zeit** zuordnen. Angezeigt werden zusätzlich Plätze max und aktuelle
-  Belegung. Ein Raum darf zwei Optionen nur zugeordnet werden, wenn **beide**
-  eine Zeit eingetragen haben **und** sich diese unterscheiden — andernfalls
-  wird die Zuweisung **direkt verhindert** (Warnmeldung, Auswahl springt
-  zurück). Doppelbelegungen können über die Oberfläche also gar nicht mehr neu
-  entstehen; die Hinweisspalte bleibt trotzdem als Warnung bestehen (rot bei
-  **Doppelbelegung**, orange bei **Kapazitätsproblemen** — Raum kleiner als
-  Belegung bzw. als die geplanten Plätze) und greift, falls ein Konflikt
-  bereits in importierten oder älteren Daten steckt. Buttons `Exportieren`,
-  `Drucken`, `Druckvorschau` erzeugen einen fertigen Raumplan (mit
-  Feldauswahl, s. u.).
+  Belegung. Ein Raum gilt für zwei Optionen nur dann als unkritisch, wenn
+  **beide** eine Zeit eingetragen haben **und** sich diese unterscheiden.
+  Andernfalls fragt die App beim Zuordnen nach: „Der Raum … ist bereits
+  Option … zugeordnet. Möchten Sie eine Mehrfachbelegung erzwingen?" — bei
+  **Nein** springt die Auswahl zurück (nichts wird geändert), bei **Ja** wird
+  die Mehrfachbelegung bewusst gespeichert. Die Hinweisspalte markiert sie
+  dann (wie jeden Konflikt) rot bei **Doppelbelegung** bzw. orange bei
+  **Kapazitätsproblemen** (Raum kleiner als Belegung bzw. als die geplanten
+  Plätze); dieselben Hinweise greifen auch, wenn ein Konflikt bereits in
+  importierten oder älteren Daten steckt. Buttons `Exportieren`, `Drucken`,
+  `Druckvorschau` erzeugen einen fertigen Raumplan (mit Feldauswahl, s. u.).
 - **Räume automatisch zuweisen**: verteilt die Räume automatisch auf die
   Optionen. Gruppiert nach der eingetragenen **Zeit** (gleiche Zeit = verschiedene
   Räume, verschiedene Zeiten dürfen denselben Raum nutzen) und wählt je Option

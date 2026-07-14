@@ -96,11 +96,13 @@ written only through the dedicated `set_raum_zeit_for_projekt` (and `set_raum_fo
 / `set_raum_fixiert` for the auto-assigner). `pruefe_raumkonflikte`
 (in `validierung.py`) reads `get_raumplan()` and flags double-bookings (same room+time)
 and capacity issues as hints (text + cell color) — it is display-only and never blocks by
-itself. The blocking happens in `hauptfenster.RaumplanTable`: assigning a room (or a time)
-that would create a same-room/same-time double-booking is rejected right in the
-`_on_raum_changed`/`_on_cell_changed` handlers (revert + `QMessageBox.warning`), so new
-conflicts can no longer be created through the UI; `pruefe_raumkonflikte`'s hints remain
-relevant for conflicts already present in imported/legacy data. Automatic room assignment
+itself. The soft gate happens in `hauptfenster.RaumplanTable`: assigning a room (or a time)
+that would create a same-room/same-time double-booking triggers a confirm dialog right in the
+`_on_raum_changed`/`_on_cell_changed` handlers (`_frage_raum_konflikt` → `QMessageBox.question`
+"Mehrfachbelegung erzwingen?"). Declining reverts the change; confirming saves the
+double-booking anyway, which `pruefe_raumkonflikte` then flags red — same as conflicts already
+present in imported/legacy data. So the UI discourages but no longer hard-blocks double-bookings.
+Automatic room assignment
 lives in `raumzuteilung.py` (greedy first-fit-decreasing per time group, respecting the
 `projekte.raum_fixiert` flag) — it never touches the participant algorithm.
 

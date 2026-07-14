@@ -429,20 +429,28 @@ class RaumplanTable(QTableWidget):
             return row
         return {}
 
-    def _melde_raum_konflikt(self, raum_id: int, zeit: str, konflikt: dict):
+    def _frage_raum_konflikt(self, raum_id: int, zeit: str, konflikt: dict) -> bool:
+        """Fragt bei einer Doppelbelegung nach, ob sie erzwungen werden soll.
+        Rückgabe True = Nutzer will die Mehrfachbelegung erzwingen (Zuordnung
+        speichern), False = abbrechen (Änderung verwerfen). Eine erzwungene
+        Mehrfachbelegung wird anschließend -- wie Konflikte aus Altdaten --
+        von pruefe_raumkonflikte() rot als Hinweis markiert."""
         raum_name = next((r["name"] for r in self._raeume if r["id"] == raum_id), "")
         andere_zeit = (konflikt.get("zeit") or "").strip()
         if zeit and andere_zeit:
             zeit_teil = f"zur Zeit „{zeit}“ "
         else:
             zeit_teil = "(Zeit ist nicht bei beiden Optionen eingetragen) "
-        QMessageBox.warning(
+        antwort = QMessageBox.question(
             self, "Raum bereits vergeben",
-            f"Der Raum „{raum_name}“ ist {zeit_teil}bereits Option "
-            f"{konflikt['nummer']} ({konflikt.get('projektname', '')}) "
-            f"zugeordnet.\n\nBitte wählen Sie einen anderen Raum oder eine "
-            f"andere Zeit."
+            f"Der Raum „{raum_name}“, den Sie zuteilen möchten, ist {zeit_teil}"
+            f"bereits Option {konflikt['nummer']} "
+            f"({konflikt.get('projektname', '')}) zugeordnet.\n\n"
+            f"Möchten Sie eine Mehrfachbelegung erzwingen?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
         )
+        return antwort == QMessageBox.StandardButton.Yes
 
     def _on_raum_changed(self, row: int):
         if self._loading:
@@ -452,8 +460,8 @@ class RaumplanTable(QTableWidget):
         zeit = self._zeit(row).strip()
         alte_zeile = self._db_zeile(nummer)
         konflikt = self._finde_raum_konflikt(nummer, raum_id, zeit)
-        if konflikt:
-            self._melde_raum_konflikt(raum_id, zeit, konflikt)
+        if konflikt and not self._frage_raum_konflikt(raum_id, zeit, konflikt):
+            # Nutzer will die Mehrfachbelegung NICHT erzwingen -> zurücksetzen
             self._loading = True
             combo = self.cellWidget(row, self._idx["raum"])
             idx = combo.findData(alte_zeile.get("raum_id") or 0)
@@ -477,8 +485,8 @@ class RaumplanTable(QTableWidget):
             zeit = self._zeit(row).strip()
             alte_zeile = self._db_zeile(nummer)
             konflikt = self._finde_raum_konflikt(nummer, raum_id, zeit)
-            if konflikt:
-                self._melde_raum_konflikt(raum_id, zeit, konflikt)
+            if konflikt and not self._frage_raum_konflikt(raum_id, zeit, konflikt):
+                # Nutzer will die Mehrfachbelegung NICHT erzwingen -> zurücksetzen
                 self._loading = True
                 self.setItem(row, col, QTableWidgetItem(str(alte_zeile.get("zeit", "") or "")))
                 self._loading = False
