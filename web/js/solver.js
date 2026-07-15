@@ -15,7 +15,8 @@
  */
 
 const PYODIDE_CDN = "https://cdn.jsdelivr.net/pyodide/v0.25.1/full/";
-const PY_MODULE = ["database.py", "algorithmen.py", "_zuteilungsplaner.py", "_mcmf.py"];
+const PY_MODULE = ["database.py", "algorithmen.py", "_zuteilungsplaner.py",
+                   "_mcmf.py", "raumzuteilung.py"];
 
 let pyodidePromise = null;  // lazy, einmalig
 let moduleGeladen = false;
@@ -95,6 +96,35 @@ json.dumps(_stat)
 `);
   const neueBytes = py.FS.readFile("/mappe.plf");
   return { dbBytes: neueBytes, statistik: JSON.parse(resultJson) };
+}
+
+/**
+ * Automatische Raumzuteilung — führt das UNVERÄNDERTE Desktop-Modul
+ * raumzuteilung.py aus (Greedy First-Fit-Decreasing je Zeitgruppe,
+ * respektiert raum_fixiert) und wendet das Ergebnis direkt über
+ * database.set_raum_for_projekt an.
+ * Rückgabe: { dbBytes, ergebnis: {anzahl, hinweise} }
+ */
+export async function raumzuteilung(dbBytes, statusCb = () => {}) {
+  const py = await getPyodide(statusCb);
+  await ladeModule(py, statusCb);
+
+  statusCb("Berechne Raumzuteilung …");
+  py.FS.writeFile("/mappe.plf", dbBytes);
+  const resultJson = await py.runPythonAsync(`
+import json
+from pathlib import Path
+import database as db
+db.DB_PATH = Path("/mappe.plf")
+import raumzuteilung
+
+_erg = raumzuteilung.automatische_raumzuteilung()
+for _nr, _rid in _erg["zuordnungen"].items():
+    db.set_raum_for_projekt(_nr, _rid)
+json.dumps({"anzahl": _erg["anzahl"], "hinweise": _erg["hinweise"]})
+`);
+  const neueBytes = py.FS.readFile("/mappe.plf");
+  return { dbBytes: neueBytes, ergebnis: JSON.parse(resultJson) };
 }
 
 /** Ist die Python-Umgebung schon geladen? (für UI-Hinweise) */

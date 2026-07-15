@@ -18,6 +18,8 @@ import { alsCsv, downloadText } from "./csv.js";
 import { oeffneImportDialog } from "./importdialog.js";
 import * as druck from "./druck.js";
 import { pruefeQualitaet } from "./quali.js";
+import { liesTabellenDatei } from "./tabellendatei.js";
+import { initRaumplan, renderRaumplan } from "./raumplan.js";
 
 // Grammatik-Formen der Labels kommen zentral aus db.labelFormen()
 // (Fugen-s, Plural Nominativ/Dativ) — gespiegelt von der Desktop-App.
@@ -47,7 +49,9 @@ function aktualisiereKopf() {
                     "btn-csv-gesamt", "btn-zuteilung-aufheben",
                     "btn-labels", "btn-tn-import", "btn-opt-import",
                     "btn-quali", "btn-druck-optionen", "btn-druck-gruppen",
-                    "btn-druck-einzeloption"]) {
+                    "btn-druck-einzeloption", "btn-raum-neu",
+                    "btn-raum-loeschen", "btn-raum-auto", "btn-raum-reset",
+                    "btn-raum-druck"]) {
     $(id).disabled = !offen;
   }
   $("tn-suche").disabled = !offen;
@@ -57,9 +61,10 @@ function aktualisiereKopf() {
     $(id).disabled = !darfZuteilen;
   }
   if (!Kontext.darfOptionenBearbeiten()) {
-    // Struktur-Eingriffe (Optionen, Import, Bezeichnungen) nur für Admin
+    // Struktur-Eingriffe (Optionen, Räume, Import, Bezeichnungen) nur für Admin
     for (const id of ["btn-opt-neu", "btn-opt-loeschen", "btn-labels",
-                      "btn-tn-import", "btn-opt-import"]) {
+                      "btn-tn-import", "btn-opt-import", "btn-raum-neu",
+                      "btn-raum-loeschen", "btn-raum-auto", "btn-raum-reset"]) {
       $(id).disabled = true;
     }
   }
@@ -80,6 +85,7 @@ function renderAktuellenTab(name) {
   if (!db.istOffen()) return;
   if (name === "teilnehmer") renderTeilnehmer();
   else if (name === "optionen") renderOptionen();
+  else if (name === "raumplan") renderRaumplan();
   else if (name === "zuteilung") renderZuteilung();
 }
 
@@ -522,12 +528,7 @@ function starteImport(art) {
   $("import-datei").click();
 }
 
-async function liesDateiText(file) {
-  // UTF-8 zuerst; Windows-CSVs (Excel) sind oft cp1252 → Fallback
-  const buf = await file.arrayBuffer();
-  try { return new TextDecoder("utf-8", { fatal: true }).decode(buf); }
-  catch { return new TextDecoder("windows-1252").decode(buf); }
-}
+// Dateien liest tabellendatei.js (CSV direkt, xlsx/ods via SheetJS lazy).
 
 // ── Qualitätsprüfung ─────────────────────────────────────────────────────────
 function zeigeQualitaet() {
@@ -625,7 +626,14 @@ function init() {
     const file = e.target.files[0];
     e.target.value = "";
     if (!file) return;
-    const text = await liesDateiText(file);
+    let text;
+    try {
+      text = await liesTabellenDatei(file, status);
+    } catch (fehler) {
+      alert("Datei konnte nicht gelesen werden: " + fehler.message);
+      status("Bereit.");
+      return;
+    }
     oeffneImportDialog(importArt, text, (anzahl) => {
       setzeDirty(true);
       renderAlles();
@@ -652,6 +660,9 @@ function init() {
     druck.drucke(`Teilnehmerliste — ${k.projekt_label} ${nr}`,
                  druck.einzelOption(nr));
   });
+
+  // Raumplan-Tab (eigenes Modul)
+  initRaumplan({ setzeDirty, status });
 
   window.addEventListener("beforeunload", (e) => {
     if (dirty) { e.preventDefault(); e.returnValue = ""; }

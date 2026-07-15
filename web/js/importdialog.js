@@ -26,8 +26,8 @@ export function oeffneImportDialog(art, csvText, onFertig) {
   const konfig = db.getFeldkonfig();
   const felder = art === "teilnehmer" ? teilnehmerFelder(konfig) : projektFelder(konfig);
   const titel = art === "teilnehmer"
-    ? "Teilnehmer/innen importieren (CSV)"
-    : `${konfig.projekt_label}en importieren (CSV)`;
+    ? "Teilnehmer/innen importieren"
+    : `${db.labelFormen(konfig.projekt_label).pluralNom} importieren`;
 
   let delim = erkenneTrennzeichen(csvText);
   let mitKopf = true;

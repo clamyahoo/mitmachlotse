@@ -235,6 +235,10 @@ button.sekundaer:hover:not(:disabled) { background: #95a5a6; }
 /* Qualitätsprüfung */
 #quali-tabelle td.icon { width: 2em; text-align: center; }
 
+/* Raumplan: Konfliktfärbung (rot = Doppelbelegung, orange = Kapazität) */
+#raumplan-tabelle tr.konflikt-doppel td { background: #f8d0d0; }
+#raumplan-tabelle tr.konflikt-kap td    { background: #ffe3b3; }
+
 /* ── Druckbereich ── */
 #druckbereich { display: none; }
 @media print {

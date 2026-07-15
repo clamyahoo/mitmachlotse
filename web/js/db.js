@@ -383,3 +383,61 @@ export function insertProjektVoll(r) {
      r.tnmin, r.tnmax]
   );
 }
+
+// ── Räume + Raumplan (Spiegel der database.py-Zugriffe) ──────────────────────
+// Wichtig wie am Desktop: raum_id/zeit/raum_fixiert werden NUR über die
+// dedizierten Setter geschrieben — updateProjektFeld fasst sie nie an, damit
+// Optionen-Bearbeitung die Raumzuordnung nicht überschreiben kann.
+
+export function getAlleRaeume() {
+  return query("SELECT * FROM raeume ORDER BY name");
+}
+
+export function insertRaum() {
+  run("INSERT INTO raeume (name, kapazitaet, beschreibung) VALUES ('-', 0, '')");
+  return query("SELECT last_insert_rowid() AS id")[0].id;
+}
+
+export function updateRaumFeld(id, feld, wert) {
+  const erlaubt = new Set(["name", "kapazitaet", "beschreibung"]);
+  if (!erlaubt.has(feld)) throw new Error(`Unbekanntes Raum-Feld: ${feld}`);
+  run(`UPDATE raeume SET ${feld} = ? WHERE id = ?`, [wert, id]);
+}
+
+export function deleteRaeume(ids) {
+  for (const id of ids) {
+    run("UPDATE projekte SET raum_id = 0 WHERE raum_id = ?", [id]);
+    run("DELETE FROM raeume WHERE id = ?", [id]);
+  }
+}
+
+/** Raumplan-Zeilen: Optionen + zugeordneter Raum + Belegung (wie Desktop). */
+export function getRaumplan() {
+  return query(`
+    SELECT p.nummer, p.projektname, p.leitung, p.tnmax,
+           p.raum_id, p.zeit, p.raum_fixiert,
+           r.name AS raum_name, r.kapazitaet AS raum_kapazitaet,
+           (SELECT COUNT(*) FROM teilnehmer t WHERE t.projekt = p.nummer) AS belegt
+    FROM projekte p
+    LEFT JOIN raeume r ON r.id = p.raum_id
+    ORDER BY p.nummer`);
+}
+
+export function setRaumZeit(nummer, raumId, zeit) {
+  run("UPDATE projekte SET raum_id = ?, zeit = ? WHERE nummer = ?",
+      [raumId, zeit, nummer]);
+}
+
+export function setRaumFixiert(nummer, fixiert) {
+  run("UPDATE projekte SET raum_fixiert = ? WHERE nummer = ?",
+      [fixiert ? 1 : 0, nummer]);
+}
+
+/** Nicht fixierte Raumzuordnungen entfernen; gibt die Anzahl zurück. */
+export function raumzuteilungAufheben() {
+  const n = query(
+    "SELECT COUNT(*) AS n FROM projekte WHERE raum_id != 0 AND raum_fixiert = 0"
+  )[0].n;
+  run("UPDATE projekte SET raum_id = 0 WHERE raum_fixiert = 0");
+  return n;
+}

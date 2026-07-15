@@ -24,13 +24,14 @@
     <button id="btn-labels" disabled>Bezeichnungen anpassen …</button>
     <button id="btn-beispiel">Beispieldaten ausprobieren</button>
     <input type="file" id="datei-input" accept=".plf,.db,.sqlite" hidden>
-    <input type="file" id="import-datei" accept=".csv,.txt" hidden>
+    <input type="file" id="import-datei" accept=".csv,.txt,.xlsx,.xls,.ods" hidden>
   </div>
 </header>
 
 <nav class="tabs">
   <button class="tab aktiv" data-tab="teilnehmer">Teilnehmer/innen</button>
   <button class="tab" data-tab="optionen" id="tab-btn-optionen">Optionen</button>
+  <button class="tab" data-tab="raumplan">Raumplan</button>
   <button class="tab" data-tab="zuteilung">Zuteilung &amp; Auswertung</button>
 </nav>
 
@@ -40,7 +41,7 @@
     <div class="aktionszeile">
       <button id="btn-tn-neu" disabled>+ Teilnehmer/in</button>
       <button id="btn-tn-loeschen" disabled>✗ Markierte löschen</button>
-      <button id="btn-tn-import" disabled>Importieren (CSV) …</button>
+      <button id="btn-tn-import" disabled>Importieren (CSV/xlsx/ods) …</button>
       <input type="search" id="tn-suche" placeholder="Suchen (Name, Gruppe) …" disabled>
       <span id="tn-anzahl" class="anzahl"></span>
     </div>
@@ -54,7 +55,7 @@
     <div class="aktionszeile">
       <button id="btn-opt-neu" disabled>+ Option</button>
       <button id="btn-opt-loeschen" disabled>✗ Markierte löschen</button>
-      <button id="btn-opt-import" disabled>Importieren (CSV) …</button>
+      <button id="btn-opt-import" disabled>Importieren (CSV/xlsx/ods) …</button>
       <span id="opt-anzahl" class="anzahl"></span>
     </div>
     <div class="tabellen-scroll">
@@ -62,7 +63,41 @@
     </div>
   </section>
 
-  <!-- ── Tab 3: Zuteilung & Auswertung ── -->
+  <!-- ── Tab 3: Raumplan ── -->
+  <section id="tab-raumplan" class="tab-inhalt">
+    <div class="karte">
+      <h2>Raumliste</h2>
+      <div class="aktionszeile">
+        <button id="btn-raum-neu" disabled>+ Raum</button>
+        <button id="btn-raum-loeschen" disabled>✗ Markierte löschen</button>
+        <span id="raum-anzahl" class="anzahl"></span>
+      </div>
+      <div class="tabellen-scroll">
+        <table id="raum-tabelle"><thead></thead><tbody></tbody></table>
+      </div>
+    </div>
+
+    <div class="karte">
+      <h2>Raumzuordnung</h2>
+      <p class="hinweis">Je Option einen Raum und eine Zeit zuordnen. Derselbe
+        Raum darf mehrfach genutzt werden, wenn beide Optionen unterschiedliche
+        Zeiten eingetragen haben — sonst fragt die App, ob die Mehrfachbelegung
+        erzwungen werden soll. Konflikte werden rot (Doppelbelegung) bzw.
+        orange (Kapazität) markiert. <b>Fix</b> schützt eine Zuordnung vor der
+        Automatik.</p>
+      <div class="aktionszeile">
+        <button id="btn-raum-auto" disabled>Räume automatisch zuweisen</button>
+        <button id="btn-raum-reset" disabled>Raumzuteilung aufheben</button>
+        <button id="btn-raum-druck" disabled>Raumplan drucken</button>
+      </div>
+      <div id="raum-solver-status" class="solver-status" hidden></div>
+      <div class="tabellen-scroll">
+        <table id="raumplan-tabelle"><thead></thead><tbody></tbody></table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Tab 4: Zuteilung & Auswertung ── -->
   <section id="tab-zuteilung" class="tab-inhalt">
     <div class="karte" id="karte-zuteilen">
       <h2>Automatisch zuweisen</h2>

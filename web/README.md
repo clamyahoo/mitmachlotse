@@ -30,9 +30,11 @@ Zuteilungslauf (Pyodide von CDN, ~10 MB) benötigt. Danach cached der Browser.
 | `js/solver.js` | Lädt Pyodide **lazy** (erst beim Klick auf „Automatisch zuweisen") und führt die **unveränderten** Desktop-Algorithmen aus |
 | `js/kontext.js` | Kontext-Schicht: Nutzer/Rolle/Gruppen — heute „lokal, ohne Anmeldung", vorbereitet für Server-Login und Moodle/LTI |
 | `js/csv.js` | Einfacher CSV-Export |
-| `js/importcsv.js` / `js/importdialog.js` | CSV-Import mit Spaltenzuordnung (Auto-Erkennung, Vorschau, Anhängen/Ersetzen) |
+| `js/importcsv.js` / `js/importdialog.js` | Import mit Spaltenzuordnung (Auto-Erkennung, Vorschau, Anhängen/Ersetzen) |
+| `js/tabellendatei.js` | Liest CSV direkt; xlsx/xls/ods über SheetJS (lazy vom CDN, erst bei Bedarf) |
 | `js/quali.js` | Qualitätsprüfung der Wunscheingaben (4 Kategorien wie Desktop) |
-| `js/druck.js` | Druck-Listen (Gesamtliste nach Optionen/Gruppen, Einzellisten) über den Browser-Druckdialog — dort auch „Als PDF speichern" |
+| `js/druck.js` | Druck-Listen (Gesamtliste nach Optionen/Gruppen, Einzellisten, Raumplan) über den Browser-Druckdialog — dort auch „Als PDF speichern" |
+| `js/raumplan.js` | Raumplan-Tab: Raumliste, Zuordnung mit Konfliktprüfung/Erzwingen-Rückfrage; automatische Raumzuteilung führt das **unveränderte** `raumzuteilung.py` via Pyodide aus |
 
 ### Warum Pyodide für den Solver?
 
@@ -67,11 +69,12 @@ befüllt werden, ohne die App umzubauen:
 - **Bezeichnungen anpassen** (Angebots-/Gruppenbegriffe, Leitungsspalte,
   Anzahl Wunschränge) — mit Grammatikanpassung (Fugen-s, Plural) und
   Datenschutz-Löschung beim Deaktivieren der Leitungsspalte, wie am Desktop
-- **CSV-Import** für Teilnehmer/innen und Optionen: Spaltenzuordnung mit
-  Auto-Erkennung (inkl. „Ganzer Name"- und „Klasse kombiniert"-Aufteilung),
-  Vorschau, Anhängen/Ersetzen, Excel-tolerante Zahlen („1.0"),
-  UTF-8/Windows-1252-Erkennung; kollidierende oder fehlende Optionsnummern
-  werden automatisch weitergezählt
+- **Import (CSV, xlsx, xls, ods)** für Teilnehmer/innen und Optionen:
+  Spaltenzuordnung mit Auto-Erkennung (inkl. „Ganzer Name"- und „Klasse
+  kombiniert"-Aufteilung), Vorschau, Anhängen/Ersetzen, Excel-tolerante
+  Zahlen („1.0"), UTF-8/Windows-1252-Erkennung; kollidierende oder fehlende
+  Optionsnummern werden automatisch weitergezählt. Excel-/ODS-Dateien liest
+  SheetJS (wird erst bei Bedarf geladen)
 - Automatische Zuteilung mit Algorithmus A/B/C, Zuweisung aufheben,
   Fixierungen (werden vom Algorithmus respektiert — derselbe Code wie Desktop)
 - **Qualitätsprüfung** der Wunscheingaben (Unzulässig/Unvollständig/Keine/
@@ -79,10 +82,15 @@ befüllt werden, ohne die App umzubauen:
 - **Listen & Druck**: Gesamtliste nach Optionen oder Gruppen sowie
   Einzellisten je Option über den Browser-Druckdialog (dort „Als PDF
   speichern" wählen) — mit Seitenumbruch je Gruppe
+- **Raumplan**: Raumliste (Name/Kapazität/Beschreibung), Raum- und
+  Zeitzuordnung je Option mit Konfliktprüfung (Doppelbelegung rot,
+  Kapazität orange) und „Mehrfachbelegung erzwingen?"-Rückfrage wie am
+  Desktop; **Fix**-Spalte schützt Zuordnungen; **automatische
+  Raumzuteilung** über das unveränderte Desktop-Modul `raumzuteilung.py`
+  (Pyodide), „Raumzuteilung aufheben", Raumplan drucken
 - Wunschstatistik, Belegungsübersicht, CSV-Export der Gesamtliste
 
 ## Was (noch) fehlt
 
-- xlsx/ods-**Import** (CSV geht; für Excel-Dateien vorerst die Desktop-App
-  nutzen oder als CSV speichern — die `.plf` ist kompatibel), Raumplan,
-  Nachbearbeitungsmodus-Anzeige, Mehrdatei-Import, Feldauswahl beim Druck
+- Nachbearbeitungsmodus-Anzeige, Mehrdatei-Import, Feldauswahl beim Druck,
+  Raumlisten-Import/-Export, Einrichtungsassistent
