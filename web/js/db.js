@@ -117,16 +117,64 @@ export async function oeffneMappe(bytes) {
     kandidat.close();
     throw new Error("Datei enthält keine Mitmach-Lotse-Planungsmappe.");
   }
-  // Minimal-Migrationen wie init_db() (alte Desktop-Dateien): nur das, was die
-  // Web-Ansicht braucht; die Desktop-App migriert beim nächsten Öffnen voll.
+  // Migrationen wie database.init_db() der Desktop-App (idempotent):
+  // Tabellen-/Spalten-Umbenennungen und nachträglich ergänzte Spalten,
+  // damit auch ältere .plf-Dateien vollständig funktionieren.
   const alt = probe[0].values.map((r) => r[0]);
   if (alt.includes("schueler") && !alt.includes("teilnehmer")) {
     kandidat.run("ALTER TABLE schueler RENAME TO teilnehmer");
   }
   kandidat.run(SCHEMA); // fehlende Tabellen (raeume, feldkonfiguration) ergänzen
+  migriereSpalten(kandidat);
   if (db) db.close();
   db = kandidat;
   return db;
+}
+
+/** Spalten-Migrationen (Spiegel von database.init_db): Umbenennungen und
+ *  ADD COLUMN für alles, was ältere Planungsmappen noch nicht haben. */
+function migriereSpalten(d) {
+  const spalten = (tabelle) => {
+    const res = d.exec(`PRAGMA table_info(${tabelle})`);
+    return res.length ? res[0].values.map((r) => r[1]) : [];
+  };
+  const renames = {
+    teilnehmer: [["jgst", "stufe"], ["abteilung", "stufenzusatz"],
+                 ["manuell_zugeteilt", "fest_zugewiesen"]],
+    projekte:   [["jgstmin", "stufenmin"], ["jgstmax", "stufenmax"]],
+  };
+  for (const [tabelle, paare] of Object.entries(renames)) {
+    let vorhanden = spalten(tabelle);
+    for (const [altN, neu] of paare) {
+      if (vorhanden.includes(altN) && !vorhanden.includes(neu)) {
+        d.run(`ALTER TABLE ${tabelle} RENAME COLUMN ${altN} TO ${neu}`);
+        vorhanden = spalten(tabelle);
+      }
+    }
+  }
+  const zusaetze = {
+    teilnehmer: [["fest_zugewiesen", "INTEGER DEFAULT 0"],
+                 ["extra_1", "TEXT DEFAULT ''"],
+                 ["extra_2", "TEXT DEFAULT ''"],
+                 ["extra_3", "TEXT DEFAULT ''"],
+                 ["projekt_baseline", "INTEGER DEFAULT NULL"]],
+    projekte:   [["leitung", "TEXT DEFAULT ''"],
+                 ["extra_1", "TEXT DEFAULT ''"],
+                 ["extra_2", "TEXT DEFAULT ''"],
+                 ["extra_3", "TEXT DEFAULT ''"],
+                 ["raum_id", "INTEGER DEFAULT 0"],
+                 ["zeit", "TEXT DEFAULT ''"],
+                 ["raumzuordnung_extra", "TEXT DEFAULT ''"],
+                 ["raum_fixiert", "INTEGER DEFAULT 0"]],
+  };
+  for (const [tabelle, defs] of Object.entries(zusaetze)) {
+    const vorhanden = spalten(tabelle);
+    for (const [name, typ] of defs) {
+      if (!vorhanden.includes(name)) {
+        d.run(`ALTER TABLE ${tabelle} ADD COLUMN ${name} ${typ}`);
+      }
+    }
+  }
 }
 
 /** Aktuelle Mappe als Bytes (Uint8Array) exportieren — für Speichern & Solver. */
@@ -260,4 +308,78 @@ export function getWunschstatistik(maxWuensche) {
     else treffer[0] += 0; // zugeteilt ohne eigenen Wunsch (fix) — separat zählbar
   }
   return { gesamt: alle.length, zugeteilt, treffer };
+}
+
+// ── Label-Grammatik (Spiegel von database.get_label_formen der Desktop-App) ──
+
+const _FUGEN_S = new Set(["Option", "Veranstaltung", "Angebot", "Aktion"]);
+const _PLURAL = {
+  Option: ["Optionen", "Optionen"],
+  Projekt: ["Projekte", "Projekten"],
+  Kurs: ["Kurse", "Kursen"],
+  Workshop: ["Workshops", "Workshops"],
+  Angebot: ["Angebote", "Angeboten"],
+  Gruppe: ["Gruppen", "Gruppen"],
+  Aktion: ["Aktionen", "Aktionen"],
+  Veranstaltung: ["Veranstaltungen", "Veranstaltungen"],
+  Einheit: ["Einheiten", "Einheiten"],
+};
+
+/** Grammatik-Formen eines Labels: Kompositum ("Optionsname" mit Fugen-s,
+ *  "Kursname" ohne), Plural Nominativ ("die Kurse") und Dativ ("nach Kursen"). */
+export function labelFormen(label) {
+  const [nom, dat] = _PLURAL[label] || [label + "en", label + "en"];
+  return {
+    name: label + (_FUGEN_S.has(label) ? "s" : "") + "name",
+    pluralNom: nom,
+    pluralDat: dat,
+  };
+}
+
+// ── Feldkonfiguration schreiben (Bezeichnungen-Dialog) ───────────────────────
+
+export function setFeldkonfig(werte) {
+  const stmt = db.prepare(
+    "INSERT INTO feldkonfiguration (schluessel, wert) VALUES (?, ?) " +
+    "ON CONFLICT(schluessel) DO UPDATE SET wert = excluded.wert"
+  );
+  for (const [k, v] of Object.entries(werte)) stmt.run([k, String(v)]);
+  stmt.free();
+}
+
+/** Leitungs-Einträge vollständig löschen (Datenschutz, wie die Desktop-App
+ *  beim Deaktivieren der Leitungsspalte). */
+export function loescheLeitungDaten() {
+  run("UPDATE projekte SET leitung = ''");
+}
+
+// ── Import-Unterstützung ─────────────────────────────────────────────────────
+
+export function clearTeilnehmer() {
+  run("DELETE FROM teilnehmer");
+}
+
+export function clearProjekte() {
+  run("DELETE FROM projekte");
+}
+
+export function insertTeilnehmerVoll(r) {
+  run(
+    `INSERT INTO teilnehmer
+       (nachname, vorname, stufe, stufenzusatz, geschlecht,
+        wunsch_1, wunsch_2, wunsch_3, wunsch_4, wunsch_5, projekt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+    [r.nachname, r.vorname, r.stufe, r.stufenzusatz, r.geschlecht,
+     r.wunsch_1, r.wunsch_2, r.wunsch_3, r.wunsch_4, r.wunsch_5]
+  );
+}
+
+export function insertProjektVoll(r) {
+  run(
+    `INSERT INTO projekte
+       (nummer, projektname, leitung, stufenmin, stufenmax, tnmin, tnmax)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [r.nummer, r.projektname, r.leitung, r.stufenmin, r.stufenmax,
+     r.tnmin, r.tnmax]
+  );
 }

@@ -24,12 +24,15 @@ Zuteilungslauf (Pyodide von CDN, ~10 MB) benötigt. Danach cached der Browser.
 
 | Datei | Aufgabe |
 |---|---|
-| `index.html` / `style.css` | Oberfläche (drei Tabs, an die Desktop-Optik angelehnt) |
-| `js/app.js` | UI-Logik: Tabellen, Datei-Öffnen/Speichern, Verkabelung |
-| `js/db.js` | SQLite im Browser (sql.js); **1:1 das Desktop-Schema** → `.plf` ist mit der Desktop-App austauschbar |
+| `index.html` / `style.css` | Oberfläche (drei Tabs, an die Desktop-Optik angelehnt), Dialoge, Druck-Stylesheet |
+| `js/app.js` | UI-Logik: Tabellen, Datei-Öffnen/Speichern, Bezeichnungen-Dialog, Verkabelung |
+| `js/db.js` | SQLite im Browser (sql.js); **1:1 das Desktop-Schema inkl. Spalten-Migrationen** für ältere Dateien → `.plf` ist mit der Desktop-App austauschbar; Label-Grammatik (`labelFormen`) |
 | `js/solver.js` | Lädt Pyodide **lazy** (erst beim Klick auf „Automatisch zuweisen") und führt die **unveränderten** Desktop-Algorithmen aus |
 | `js/kontext.js` | Kontext-Schicht: Nutzer/Rolle/Gruppen — heute „lokal, ohne Anmeldung", vorbereitet für Server-Login und Moodle/LTI |
 | `js/csv.js` | Einfacher CSV-Export |
+| `js/importcsv.js` / `js/importdialog.js` | CSV-Import mit Spaltenzuordnung (Auto-Erkennung, Vorschau, Anhängen/Ersetzen) |
+| `js/quali.js` | Qualitätsprüfung der Wunscheingaben (4 Kategorien wie Desktop) |
+| `js/druck.js` | Druck-Listen (Gesamtliste nach Optionen/Gruppen, Einzellisten) über den Browser-Druckdialog — dort auch „Als PDF speichern" |
 
 ### Warum Pyodide für den Solver?
 
@@ -57,16 +60,29 @@ befüllt werden, ohne die App umzubauen:
 ## Was der Prototyp kann
 
 - Neue Planungsmappe anlegen, `.plf`/`.db` öffnen und speichern
-  (Chrome/Edge: direkt in die Datei; Firefox/Safari: über den Download-Ordner)
+  (Chrome/Edge: direkt in die Datei; Firefox/Safari: über den Download-Ordner);
+  ältere Desktop-Dateien werden beim Öffnen automatisch migriert
+- **Beispieldaten ausprobieren** (ein Klick lädt die Beispiel-Planungsmappe)
 - Teilnehmer/innen und Optionen anlegen, bearbeiten, löschen, suchen
-- Konfigurierte Bezeichnungen und Wunschanzahl aus der `.plf` werden
-  übernommen (z. B. aus der Desktop-App konfigurierte Labels)
+- **Bezeichnungen anpassen** (Angebots-/Gruppenbegriffe, Leitungsspalte,
+  Anzahl Wunschränge) — mit Grammatikanpassung (Fugen-s, Plural) und
+  Datenschutz-Löschung beim Deaktivieren der Leitungsspalte, wie am Desktop
+- **CSV-Import** für Teilnehmer/innen und Optionen: Spaltenzuordnung mit
+  Auto-Erkennung (inkl. „Ganzer Name"- und „Klasse kombiniert"-Aufteilung),
+  Vorschau, Anhängen/Ersetzen, Excel-tolerante Zahlen („1.0"),
+  UTF-8/Windows-1252-Erkennung; kollidierende oder fehlende Optionsnummern
+  werden automatisch weitergezählt
 - Automatische Zuteilung mit Algorithmus A/B/C, Zuweisung aufheben,
   Fixierungen (werden vom Algorithmus respektiert — derselbe Code wie Desktop)
+- **Qualitätsprüfung** der Wunscheingaben (Unzulässig/Unvollständig/Keine/
+  Mehrfach — dieselben Kategorien wie am Desktop)
+- **Listen & Druck**: Gesamtliste nach Optionen oder Gruppen sowie
+  Einzellisten je Option über den Browser-Druckdialog (dort „Als PDF
+  speichern" wählen) — mit Seitenumbruch je Gruppe
 - Wunschstatistik, Belegungsübersicht, CSV-Export der Gesamtliste
 
 ## Was (noch) fehlt
 
-- CSV/xlsx/ods-**Import** (dafür die Desktop-App nutzen — die `.plf` ist
-  kompatibel), Raumplan, Listen-Druck/PDF, Nachbearbeitungsmodus-Anzeige,
-  Beispieldaten-Menü
+- xlsx/ods-**Import** (CSV geht; für Excel-Dateien vorerst die Desktop-App
+  nutzen oder als CSV speichern — die `.plf` ist kompatibel), Raumplan,
+  Nachbearbeitungsmodus-Anzeige, Mehrdatei-Import, Feldauswahl beim Druck

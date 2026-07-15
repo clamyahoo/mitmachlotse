@@ -170,3 +170,90 @@ footer {
   font-size: 12px;
   border-top: 1px solid #ddd;
 }
+
+/* ── Dialoge ── */
+dialog {
+  border: 1px solid #999;
+  border-radius: 6px;
+  padding: 16px 18px;
+  max-width: 760px;
+  width: 92%;
+  font-size: 13px;
+}
+dialog::backdrop { background: rgba(0, 0, 0, .45); }
+dialog h2 { margin-top: 0; font-size: 15px; color: #2c3e50; }
+.formzeile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.formzeile label { min-width: 280px; }
+.formzeile input[type="text"], .formzeile select {
+  flex: 1;
+  border: 1px solid #bbb;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font: inherit;
+}
+.dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+button.sekundaer { background: #7f8c8d; }
+button.sekundaer:hover:not(:disabled) { background: #95a5a6; }
+
+/* Import-Dialog: Zuordnungstabelle + Mini-Vorschau */
+.map-tabelle { width: 100%; border-collapse: collapse; margin: 8px 0; }
+.map-tabelle th, .map-tabelle td {
+  padding: 3px 6px;
+  border-bottom: 1px solid #eee;
+  text-align: left;
+  background: white;
+  color: #222;
+  position: static;
+}
+.map-tabelle select {
+  width: 100%;
+  border: 1px solid #bbb;
+  border-radius: 4px;
+  padding: 3px 6px;
+  font: inherit;
+}
+.vorschau-klein {
+  max-height: 150px;
+  overflow: auto;
+  border: 1px solid #ddd;
+  margin-top: 8px;
+}
+.vorschau-klein table { font-size: 11px; }
+.vorschau-klein th { position: static; padding: 3px 6px; }
+.vorschau-klein td { padding: 2px 6px; white-space: nowrap; }
+
+/* Qualitätsprüfung */
+#quali-tabelle td.icon { width: 2em; text-align: center; }
+
+/* ── Druckbereich ── */
+#druckbereich { display: none; }
+@media print {
+  body > *:not(#druckbereich) { display: none !important; }
+  body { background: white; }
+  #druckbereich { display: block; }
+  #druckbereich h1 { font-size: 16pt; color: #1F3864; margin-bottom: 2mm; }
+  #druckbereich .druckdatum { font-size: 9pt; color: #555; margin-bottom: 6mm; }
+  #druckbereich section { break-before: page; }
+  #druckbereich section:first-of-type { break-before: auto; }
+  #druckbereich h2 { font-size: 13pt; margin: 4mm 0 2mm; }
+  #druckbereich table { width: 100%; border-collapse: collapse; font-size: 10pt; }
+  #druckbereich th {
+    text-align: left;
+    border-bottom: 1.5pt solid #333;
+    padding: 1.5mm 2mm;
+    background: none;
+    color: #000;
+    position: static;
+  }
+  #druckbereich td { border-bottom: .5pt solid #999; padding: 1mm 2mm; }
+}

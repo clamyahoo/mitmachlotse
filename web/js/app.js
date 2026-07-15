@@ -15,6 +15,13 @@ import { Kontext } from "./kontext.js";
 import * as db from "./db.js";
 import * as solver from "./solver.js";
 import { alsCsv, downloadText } from "./csv.js";
+import { oeffneImportDialog } from "./importdialog.js";
+import * as druck from "./druck.js";
+import { pruefeQualitaet } from "./quali.js";
+
+// Grammatik-Formen der Labels kommen zentral aus db.labelFormen()
+// (Fugen-s, Plural Nominativ/Dativ) — gespiegelt von der Desktop-App.
+const pluralDativ = (label) => db.labelFormen(label).pluralDat;
 
 // ── Zustand ──────────────────────────────────────────────────────────────────
 let dateiname = "";
@@ -37,17 +44,24 @@ function aktualisiereKopf() {
   const offen = db.istOffen();
   for (const id of ["btn-speichern", "btn-speichern-als", "btn-tn-neu",
                     "btn-tn-loeschen", "btn-opt-neu", "btn-opt-loeschen",
-                    "btn-csv-gesamt", "btn-zuteilung-aufheben"]) {
+                    "btn-csv-gesamt", "btn-zuteilung-aufheben",
+                    "btn-labels", "btn-tn-import", "btn-opt-import",
+                    "btn-quali", "btn-druck-optionen", "btn-druck-gruppen",
+                    "btn-druck-einzeloption"]) {
     $(id).disabled = !offen;
   }
   $("tn-suche").disabled = !offen;
+  $("druck-option-select").disabled = !offen;
   const darfZuteilen = offen && Kontext.darfZuteilen();
   for (const id of ["btn-algo-a", "btn-algo-b", "btn-algo-c"]) {
     $(id).disabled = !darfZuteilen;
   }
   if (!Kontext.darfOptionenBearbeiten()) {
-    $("btn-opt-neu").disabled = true;
-    $("btn-opt-loeschen").disabled = true;
+    // Struktur-Eingriffe (Optionen, Import, Bezeichnungen) nur für Admin
+    for (const id of ["btn-opt-neu", "btn-opt-loeschen", "btn-labels",
+                      "btn-tn-import", "btn-opt-import"]) {
+      $(id).disabled = true;
+    }
   }
 }
 
@@ -219,7 +233,7 @@ function renderOptionen() {
 
   const spalten = ["✓", "Nr."];
   if (mitLeitung) spalten.push(k.leitung_label);
-  spalten.push(`${k.projekt_label}sname`.replace("Optionsname", "Optionsname"),
+  spalten.push(db.labelFormen(k.projekt_label).name,
                `${k.stufe_label} min`, `${k.stufe_label} max`,
                "Plätze min", "Plätze max", "belegt");
   kopfzeile($("opt-tabelle").querySelector("thead"), spalten);
@@ -273,7 +287,8 @@ function renderOptionen() {
 
     tbody.appendChild(tr);
   }
-  $("opt-anzahl").textContent = `${projekte.length} ${k.projekt_label}en`;
+  $("opt-anzahl").textContent =
+    `${projekte.length} ${db.labelFormen(k.projekt_label).pluralNom}`;
 }
 
 // ── Tab 3: Zuteilung & Auswertung ────────────────────────────────────────────
@@ -297,9 +312,11 @@ function renderZuteilung() {
   zeile("Ohne Zuteilung", stat.treffer[0] || 0, stat.gesamt);
   zeile("Gesamt", stat.gesamt, 0);
 
-  $("uebersicht-titel").textContent = `Belegungsübersicht (${k.projekt_label}en)`;
+  $("uebersicht-titel").textContent =
+    `Belegungsübersicht (${db.labelFormen(k.projekt_label).pluralNom})`;
   kopfzeile($("uebersicht-tabelle").querySelector("thead"),
-    ["Nr.", `${k.projekt_label}sname`, "Plätze min", "Plätze max", "belegt"]);
+    ["Nr.", db.labelFormen(k.projekt_label).name,
+     "Plätze min", "Plätze max", "belegt"]);
   const uTbody = $("uebersicht-tabelle").querySelector("tbody");
   uTbody.innerHTML = "";
   const belegung = db.getBelegung();
@@ -316,6 +333,17 @@ function renderZuteilung() {
     tr.appendChild(textZelle(String(belegt), klasse));
     uTbody.appendChild(tr);
   }
+
+  // Druck-Auswahl + dynamische Beschriftungen
+  const dsel = $("druck-option-select");
+  const vorher = dsel.value;
+  dsel.innerHTML = "";
+  for (const p of db.getAlleProjekte()) {
+    dsel.appendChild(new Option(`${p.nummer}: ${p.projektname}`, p.nummer));
+  }
+  if (vorher) dsel.value = vorher;
+  $("btn-druck-optionen").textContent =
+    `Gesamtliste nach ${pluralDativ(k.projekt_label)}`;
 }
 
 // ── Solver ───────────────────────────────────────────────────────────────────
@@ -429,6 +457,101 @@ function exportGesamtCsv() {
   status("Gesamtliste als CSV exportiert.");
 }
 
+// ── Bezeichnungen anpassen ───────────────────────────────────────────────────
+function zeigeLabelsDialog() {
+  const k = db.getFeldkonfig();
+  $("lbl-projekt").value = k.projekt_label;
+  $("lbl-stufe").value = k.stufe_label;
+  $("lbl-zusatz").value = k.stufenzusatz_label;
+  $("lbl-leitung").value = k.leitung_label;
+  $("lbl-maxw").value = String(k.max_wuensche);
+  $("dlg-labels").showModal();
+}
+
+function speichereLabels() {
+  const k = db.getFeldkonfig();
+  const neuLeitung = $("lbl-leitung").value.trim();
+  if (k.leitung_label && !neuLeitung) {
+    // Datenschutz wie in der Desktop-App: Deaktivieren der Leitungsspalte
+    // löscht die eingetragenen Namen vollständig, nicht nur die Anzeige.
+    if (!confirm(
+      "Die Leitungsspalte wird ausgeblendet und die eingetragenen Namen " +
+      "werden aus Datenschutzgründen vollständig gelöscht. Fortfahren?")) {
+      return;
+    }
+    db.loescheLeitungDaten();
+  }
+  db.setFeldkonfig({
+    projekt_label: $("lbl-projekt").value.trim() || "Option",
+    stufe_label: $("lbl-stufe").value.trim() || "Gruppenbereich",
+    stufenzusatz_label: $("lbl-zusatz").value.trim() || "Gruppenzusatz",
+    leitung_label: neuLeitung,
+    max_wuensche: $("lbl-maxw").value,
+  });
+  $("dlg-labels").close();
+  setzeDirty(true);
+  renderAlles();
+  status("Bezeichnungen übernommen — sie gelten auch in der Desktop-App.");
+}
+
+// ── Beispieldaten ────────────────────────────────────────────────────────────
+async function ladeBeispieldaten() {
+  if (dirty && !confirm("Ungespeicherte Änderungen verwerfen?")) return;
+  status("Lade Beispieldaten …");
+  try {
+    const resp = await fetch("../beispieldaten/planungsmappe_beispiel.plf");
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    await db.oeffneMappe(await resp.arrayBuffer());
+    dateiname = "beispiel_planungsmappe.plf";
+    dateiHandle = null;
+    tnMarkiert.clear(); optMarkiert.clear();
+    setzeDirty(false);
+    renderAlles();
+    status("Beispieldaten geladen — zum Ausprobieren; „Speichern als“ legt eine eigene Kopie an.");
+  } catch (e) {
+    alert("Beispieldaten konnten nicht geladen werden: " + e.message);
+    status("Bereit.");
+  }
+}
+
+// ── CSV-Import ───────────────────────────────────────────────────────────────
+let importArt = "teilnehmer";
+
+function starteImport(art) {
+  importArt = art;
+  $("import-datei").click();
+}
+
+async function liesDateiText(file) {
+  // UTF-8 zuerst; Windows-CSVs (Excel) sind oft cp1252 → Fallback
+  const buf = await file.arrayBuffer();
+  try { return new TextDecoder("utf-8", { fatal: true }).decode(buf); }
+  catch { return new TextDecoder("windows-1252").decode(buf); }
+}
+
+// ── Qualitätsprüfung ─────────────────────────────────────────────────────────
+function zeigeQualitaet() {
+  const eintraege = pruefeQualitaet();
+  kopfzeile($("quali-tabelle").querySelector("thead"),
+    ["", "Kategorie", "Name", "Gruppe", "Details"]);
+  const tbody = $("quali-tabelle").querySelector("tbody");
+  tbody.innerHTML = "";
+  for (const e of eintraege) {
+    const tr = document.createElement("tr");
+    const tdI = textZelle(e.icon);
+    tdI.className = "icon";
+    tr.appendChild(tdI);
+    tr.appendChild(textZelle(e.kategorie));
+    tr.appendChild(textZelle(e.name));
+    tr.appendChild(textZelle(e.gruppe));
+    tr.appendChild(textZelle(e.details));
+    tbody.appendChild(tr);
+  }
+  $("quali-zusammenfassung").textContent = eintraege.length
+    ? `${eintraege.length} Hinweis(e)`
+    : "Keine Auffälligkeiten ✓";
+}
+
 // ── Verkabelung ──────────────────────────────────────────────────────────────
 function init() {
   aktualisiereKopf();
@@ -486,6 +609,49 @@ function init() {
   });
 
   $("btn-csv-gesamt").addEventListener("click", exportGesamtCsv);
+
+  // Bezeichnungen-Dialog
+  $("btn-labels").addEventListener("click", zeigeLabelsDialog);
+  $("lbl-ok").addEventListener("click", speichereLabels);
+  $("lbl-abbrechen").addEventListener("click", () => $("dlg-labels").close());
+
+  // Beispieldaten
+  $("btn-beispiel").addEventListener("click", ladeBeispieldaten);
+
+  // CSV-Import (Teilnehmer/innen + Optionen)
+  $("btn-tn-import").addEventListener("click", () => starteImport("teilnehmer"));
+  $("btn-opt-import").addEventListener("click", () => starteImport("optionen"));
+  $("import-datei").addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    const text = await liesDateiText(file);
+    oeffneImportDialog(importArt, text, (anzahl) => {
+      setzeDirty(true);
+      renderAlles();
+      status(`${anzahl} Datensätze importiert (${file.name}).`);
+    });
+  });
+
+  // Qualitätsprüfung
+  $("btn-quali").addEventListener("click", zeigeQualitaet);
+
+  // Listen & Druck (Browser-Druckdialog, dort auch "Als PDF speichern")
+  $("btn-druck-optionen").addEventListener("click", () => {
+    const k = db.getFeldkonfig();
+    druck.drucke(`Gesamtliste nach ${pluralDativ(k.projekt_label)}`,
+                 druck.gesamtNachOptionen());
+  });
+  $("btn-druck-gruppen").addEventListener("click", () => {
+    druck.drucke("Gesamtliste nach Gruppen", druck.gesamtNachGruppen());
+  });
+  $("btn-druck-einzeloption").addEventListener("click", () => {
+    const nr = parseInt($("druck-option-select").value, 10);
+    if (!nr) return;
+    const k = db.getFeldkonfig();
+    druck.drucke(`Teilnehmerliste — ${k.projekt_label} ${nr}`,
+                 druck.einzelOption(nr));
+  });
 
   window.addEventListener("beforeunload", (e) => {
     if (dirty) { e.preventDefault(); e.returnValue = ""; }

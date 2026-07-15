@@ -1,0 +1,126 @@
+/**
+ * Druck-Listen: baut Gruppenlisten in den #druckbereich und öffnet die
+ * Druckansicht des Browsers (dort ist auch "Als PDF speichern" verfügbar).
+ * Gegenstück zu den Gesamtlisten-Exporten der Desktop-App — als Web-Version
+ * über den nativen Browser-Druck statt eigener PDF-Erzeugung.
+ */
+
+import * as db from "./db.js";
+
+function gruppeText(t) {
+  const zusatz = t.stufenzusatz && t.stufenzusatz !== "-" ? t.stufenzusatz : "";
+  return `${t.stufe}${zusatz}`;
+}
+
+function rangText(t, nummer, mw) {
+  if (!nummer) return "–";
+  const wuensche = [t.wunsch_1, t.wunsch_2, t.wunsch_3, t.wunsch_4, t.wunsch_5]
+    .slice(0, mw).filter((w) => w !== 0);
+  const idx = wuensche.indexOf(nummer);
+  return idx >= 0 ? `Wunsch ${idx + 1}` : "kein Wunsch";
+}
+
+/** [{titel, headers, rows}] — je zugewiesener Option eine Gruppe. */
+export function gesamtNachOptionen() {
+  const k = db.getFeldkonfig();
+  const tn = db.getAlleTeilnehmer();
+  const gruppen = [];
+  for (const p of db.getAlleProjekte()) {
+    const mitglieder = tn.filter((t) => t.projekt === p.nummer);
+    const leitung = p.leitung && k.leitung_label ? ` — ${p.leitung}` : "";
+    gruppen.push({
+      titel: `${p.nummer}: ${p.projektname}${leitung} (${mitglieder.length} von max. ${p.tnmax})`,
+      headers: ["Name", k.stufe_label, "Wunschrang erhalten"],
+      rows: mitglieder.map((t) => [
+        `${t.nachname}, ${t.vorname}`, gruppeText(t),
+        rangText(t, p.nummer, k.max_wuensche),
+      ]),
+    });
+  }
+  const ohne = tn.filter((t) => !t.projekt);
+  if (ohne.length) {
+    gruppen.push({
+      titel: `(noch nicht zugeteilt) — ${ohne.length}`,
+      headers: ["Name", k.stufe_label, "Wunschrang erhalten"],
+      rows: ohne.map((t) => [`${t.nachname}, ${t.vorname}`, gruppeText(t), "–"]),
+    });
+  }
+  return gruppen;
+}
+
+/** [{titel, headers, rows}] — je Gruppe (Stufe+Zusatz) eine Liste. */
+export function gesamtNachGruppen() {
+  const k = db.getFeldkonfig();
+  const projekte = Object.fromEntries(db.getAlleProjekte().map((p) => [p.nummer, p]));
+  const nachGruppe = new Map();
+  for (const t of db.getAlleTeilnehmer()) {
+    const schluessel = gruppeText(t);
+    if (!nachGruppe.has(schluessel)) nachGruppe.set(schluessel, []);
+    nachGruppe.get(schluessel).push(t);
+  }
+  const gruppen = [];
+  for (const [name, mitglieder] of [...nachGruppe.entries()].sort(
+    (a, b) => a[0].localeCompare(b[0], "de", { numeric: true }))) {
+    gruppen.push({
+      titel: `${k.stufe_label} ${name} (${mitglieder.length})`,
+      headers: ["Name", `${k.projekt_label}-Nr.`, k.projekt_label],
+      rows: mitglieder.map((t) => [
+        `${t.nachname}, ${t.vorname}`,
+        t.projekt || "0",
+        t.projekt ? (projekte[t.projekt]?.projektname ?? "?") : "⚠ (keine)",
+      ]),
+    });
+  }
+  return gruppen;
+}
+
+/** Einzelliste für eine konkrete Optionsnummer. */
+export function einzelOption(nummer) {
+  return gesamtNachOptionen().filter((g) => g.titel.startsWith(`${nummer}:`));
+}
+
+/** Baut die Gruppen in den #druckbereich (ohne zu drucken — testbar). */
+export function baueDruckbereich(titel, gruppen) {
+  const el = document.getElementById("druckbereich");
+  el.innerHTML = "";
+  const h1 = document.createElement("h1");
+  h1.textContent = titel;
+  el.appendChild(h1);
+  const datum = document.createElement("div");
+  datum.className = "druckdatum";
+  datum.textContent = new Date().toLocaleDateString("de-DE",
+    { year: "numeric", month: "long", day: "numeric" });
+  el.appendChild(datum);
+  for (const g of gruppen) {
+    const sec = document.createElement("section");
+    const h2 = document.createElement("h2");
+    h2.textContent = g.titel;
+    sec.appendChild(h2);
+    const tbl = document.createElement("table");
+    const thead = document.createElement("thead");
+    const trh = document.createElement("tr");
+    for (const h of g.headers) {
+      const th = document.createElement("th"); th.textContent = h; trh.appendChild(th);
+    }
+    thead.appendChild(trh);
+    tbl.appendChild(thead);
+    const tbody = document.createElement("tbody");
+    for (const row of g.rows) {
+      const tr = document.createElement("tr");
+      for (const zelle of row) {
+        const td = document.createElement("td"); td.textContent = zelle; tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+    tbl.appendChild(tbody);
+    sec.appendChild(tbl);
+    el.appendChild(sec);
+  }
+  return el;
+}
+
+/** Druckansicht öffnen (Browser-Dialog, inkl. "Als PDF speichern"). */
+export function drucke(titel, gruppen) {
+  baueDruckbereich(titel, gruppen);
+  window.print();
+}

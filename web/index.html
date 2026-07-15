@@ -21,7 +21,10 @@
     <button id="btn-oeffnen">Öffnen (.plf)</button>
     <button id="btn-speichern" disabled>Speichern</button>
     <button id="btn-speichern-als" disabled>Speichern als …</button>
+    <button id="btn-labels" disabled>Bezeichnungen anpassen …</button>
+    <button id="btn-beispiel">Beispieldaten ausprobieren</button>
     <input type="file" id="datei-input" accept=".plf,.db,.sqlite" hidden>
+    <input type="file" id="import-datei" accept=".csv,.txt" hidden>
   </div>
 </header>
 
@@ -37,6 +40,7 @@
     <div class="aktionszeile">
       <button id="btn-tn-neu" disabled>+ Teilnehmer/in</button>
       <button id="btn-tn-loeschen" disabled>✗ Markierte löschen</button>
+      <button id="btn-tn-import" disabled>Importieren (CSV) …</button>
       <input type="search" id="tn-suche" placeholder="Suchen (Name, Gruppe) …" disabled>
       <span id="tn-anzahl" class="anzahl"></span>
     </div>
@@ -50,6 +54,7 @@
     <div class="aktionszeile">
       <button id="btn-opt-neu" disabled>+ Option</button>
       <button id="btn-opt-loeschen" disabled>✗ Markierte löschen</button>
+      <button id="btn-opt-import" disabled>Importieren (CSV) …</button>
       <span id="opt-anzahl" class="anzahl"></span>
     </div>
     <div class="tabellen-scroll">
@@ -84,6 +89,33 @@
     </div>
 
     <div class="karte">
+      <h2>Qualitätsprüfung Wunscheingaben</h2>
+      <p class="hinweis">Prüft alle Wunscheingaben auf Zulässigkeit (Bereich),
+        Vollständigkeit, fehlende Wünsche und Mehrfachnennungen.</p>
+      <div class="aktionszeile">
+        <button id="btn-quali" disabled>Jetzt prüfen</button>
+        <span id="quali-zusammenfassung" class="anzahl"></span>
+      </div>
+      <div class="tabellen-scroll">
+        <table id="quali-tabelle"><thead></thead><tbody></tbody></table>
+      </div>
+    </div>
+
+    <div class="karte">
+      <h2>Listen &amp; Druck</h2>
+      <p class="hinweis">Öffnet die Druckansicht des Browsers — dort lässt sich
+        auch <b>„Als PDF speichern"</b> wählen.</p>
+      <div class="aktionszeile">
+        <button id="btn-druck-optionen" disabled>Gesamtliste nach Optionen</button>
+        <button id="btn-druck-gruppen" disabled>Gesamtliste nach Gruppen</button>
+      </div>
+      <div class="aktionszeile">
+        <select id="druck-option-select" disabled></select>
+        <button id="btn-druck-einzeloption" disabled>Teilnehmerliste drucken</button>
+      </div>
+    </div>
+
+    <div class="karte">
       <h2>Export</h2>
       <div class="aktionszeile">
         <button id="btn-csv-gesamt" disabled>Gesamtliste als CSV</button>
@@ -93,6 +125,48 @@
 </main>
 
 <footer><span id="status">Bereit.</span></footer>
+
+<!-- ── Dialog: Bezeichnungen anpassen ── -->
+<dialog id="dlg-labels">
+  <h2>Bezeichnungen anpassen</h2>
+  <p class="hinweis">Die Begriffe erscheinen überall in der Oberfläche, in
+    Listen und Ausdrucken — z.&nbsp;B. „Option", „Projekt", „Kurs" oder
+    „Workshop". Sie werden in der Planungsmappe gespeichert und gelten auch
+    in der Desktop-App.</p>
+  <div class="formzeile">
+    <label for="lbl-projekt">Bezeichnung der Angebote</label>
+    <input type="text" id="lbl-projekt" placeholder="z. B. Option, Projekt, Kurs">
+  </div>
+  <div class="formzeile">
+    <label for="lbl-stufe">Bezeichnung Gruppenbereich</label>
+    <input type="text" id="lbl-stufe" placeholder="z. B. Jgst., Klasse, Jahrgang">
+  </div>
+  <div class="formzeile">
+    <label for="lbl-zusatz">Bezeichnung Gruppenzusatz</label>
+    <input type="text" id="lbl-zusatz" placeholder="z. B. Klassenzusatz, Untergruppe">
+  </div>
+  <div class="formzeile">
+    <label for="lbl-leitung">Leitung / Ansprechperson (leer = Spalte ausgeblendet)</label>
+    <input type="text" id="lbl-leitung" placeholder="z. B. Leitung, Lehrkraft">
+  </div>
+  <div class="formzeile">
+    <label for="lbl-maxw">Anzahl Wunschränge</label>
+    <select id="lbl-maxw">
+      <option>1</option><option>2</option><option>3</option>
+      <option>4</option><option>5</option>
+    </select>
+  </div>
+  <div class="dialog-buttons">
+    <button class="sekundaer" id="lbl-abbrechen">Abbrechen</button>
+    <button id="lbl-ok">Übernehmen</button>
+  </div>
+</dialog>
+
+<!-- ── Dialog: CSV-Import (Inhalt wird dynamisch aufgebaut) ── -->
+<dialog id="dlg-import"></dialog>
+
+<!-- ── Druckbereich (nur in der Druckansicht sichtbar) ── -->
+<div id="druckbereich"></div>
 
 <script type="module" src="js/app.js"></script>
 </body>
