@@ -20,21 +20,47 @@ function rangText(t, nummer, mw) {
   return idx >= 0 ? `Wunsch ${idx + 1}` : "kein Wunsch";
 }
 
-/** [{titel, headers, rows}] — je zugewiesener Option eine Gruppe. */
+/** [{titel, headers, rows}] — je zugewiesener Option eine Gruppe.
+ *  Bei aktivem Nachbearbeitungsmodus wird jede Umverteilung von beiden
+ *  Seiten sichtbar (wie am Desktop): Neuzugänge als gelbe Zeilen mit
+ *  "… · neu (vorher: N)", Abgänge als durchgestrichene Zeilen am
+ *  Gruppenende ("umverteilt (jetzt: M)"). */
 export function gesamtNachOptionen() {
   const k = db.getFeldkonfig();
   const tn = db.getAlleTeilnehmer();
+  const modus = db.istBearbeitungsmodus();
   const gruppen = [];
   for (const p of db.getAlleProjekte()) {
     const mitglieder = tn.filter((t) => t.projekt === p.nummer);
     const leitung = p.leitung && k.leitung_label ? ` — ${p.leitung}` : "";
+    const rows = mitglieder.map((t) => {
+      const rang = rangText(t, p.nummer, k.max_wuensche);
+      const neu = modus && t.projekt_baseline !== null
+        && t.projekt_baseline !== p.nummer;
+      if (neu) {
+        const vorher = t.projekt_baseline || "–";
+        return { klasse: "neu", zellen: [
+          `${t.nachname}, ${t.vorname}`, gruppeText(t),
+          `${rang} · neu (vorher: ${vorher})`,
+        ]};
+      }
+      return [`${t.nachname}, ${t.vorname}`, gruppeText(t), rang];
+    });
+    if (modus) {
+      // Abgänge: waren zur Basis-Zeit hier, sind jetzt woanders
+      const geister = tn.filter((t) =>
+        t.projekt_baseline === p.nummer && t.projekt !== p.nummer);
+      for (const t of geister) {
+        rows.push({ klasse: "geist", zellen: [
+          `${t.nachname}, ${t.vorname}`, gruppeText(t),
+          `umverteilt (jetzt: ${t.projekt || "–"})`,
+        ]});
+      }
+    }
     gruppen.push({
       titel: `${p.nummer}: ${p.projektname}${leitung} (${mitglieder.length} von max. ${p.tnmax})`,
       headers: ["Name", k.stufe_label, "Wunschrang erhalten"],
-      rows: mitglieder.map((t) => [
-        `${t.nachname}, ${t.vorname}`, gruppeText(t),
-        rangText(t, p.nummer, k.max_wuensche),
-      ]),
+      rows,
     });
   }
   const ohne = tn.filter((t) => !t.projekt);
@@ -106,8 +132,11 @@ export function baueDruckbereich(titel, gruppen) {
     tbl.appendChild(thead);
     const tbody = document.createElement("tbody");
     for (const row of g.rows) {
+      // Zeilen sind Arrays oder {klasse, zellen} (Nachbearbeitungs-Marker)
+      const zellen = Array.isArray(row) ? row : row.zellen;
       const tr = document.createElement("tr");
-      for (const zelle of row) {
+      if (!Array.isArray(row) && row.klasse) tr.className = row.klasse;
+      for (const zelle of zellen) {
         const td = document.createElement("td"); td.textContent = zelle; tr.appendChild(td);
       }
       tbody.appendChild(tr);

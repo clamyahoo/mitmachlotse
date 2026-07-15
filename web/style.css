@@ -36,6 +36,13 @@ header {
   padding: 1px 8px;
   font-size: 11px;
 }
+.bm-badge {
+  background: #f1c40f;
+  color: #4a3b00;
+  border-radius: 3px;
+  padding: 1px 8px;
+  font-size: 11px;
+}
 .kontext-badge {
   margin-left: auto;
   background: #34495e;
@@ -239,6 +246,15 @@ button.sekundaer:hover:not(:disabled) { background: #95a5a6; }
 #raumplan-tabelle tr.konflikt-doppel td { background: #f8d0d0; }
 #raumplan-tabelle tr.konflikt-kap td    { background: #ffe3b3; }
 
+/* Nachbearbeitungsmodus: geänderte Zuteilung (gelb wie Desktop #fff3b0) */
+td.bm-geaendert { background: #fff3b0; }
+.bm-vorher {
+  display: block;
+  font-size: 11px;
+  color: #6b5b00;
+}
+.bm-vorher s { opacity: .75; }
+
 /* ── Druckbereich ── */
 #druckbereich { display: none; }
 @media print {
@@ -260,4 +276,16 @@ button.sekundaer:hover:not(:disabled) { background: #95a5a6; }
     position: static;
   }
   #druckbereich td { border-bottom: .5pt solid #999; padding: 1mm 2mm; }
+  /* Nachbearbeitungsmodus in Drucklisten: Neuzugänge gelb, Abgänge
+     durchgestrichen. Farbdruck erzwingen, sonst filtert der Browser die
+     Hintergründe beim Drucken heraus. */
+  #druckbereich tr.neu td {
+    background: #fff3b0 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  #druckbereich tr.geist td {
+    color: #777;
+    text-decoration: line-through;
+  }
 }

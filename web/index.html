@@ -14,6 +14,7 @@
     <span class="app-titel">Mitmach-Lotse <small>Web</small></span>
     <span id="dateiname" class="dateiname">(keine Planungsmappe)</span>
     <span id="dirty-badge" class="dirty-badge" hidden>ungespeicherte Änderungen</span>
+    <span id="bm-badge" class="bm-badge" hidden>✎ Bearbeitungsmodus aktiv</span>
     <span id="kontext-badge" class="kontext-badge" title="Betriebsart: lokal, ohne Anmeldung. Alle Daten bleiben auf diesem Gerät."></span>
   </div>
   <div class="toolbar">
@@ -121,6 +122,23 @@
     <div class="karte">
       <h2 id="uebersicht-titel">Belegungsübersicht</h2>
       <table id="uebersicht-tabelle" class="kompakt"><thead></thead><tbody></tbody></table>
+    </div>
+
+    <div class="karte">
+      <h2>Nachbearbeitungsmodus</h2>
+      <p class="hinweis">Hält den aktuellen Zuteilungsstand als Basis fest.
+        Solange der Modus aktiv ist, werden alle Umverteilungen sichtbar
+        gemacht — in der Teilnehmertabelle, in der Übersicht unten und in den
+        gedruckten Gruppenlisten (Neuzugänge gelb, Abgänge durchgestrichen).
+        Der Modus wird mit der Planungsmappe gespeichert.
+        <b>Ausschalten</b> macht den aktuellen Stand endgültig fest.</p>
+      <div class="aktionszeile">
+        <button id="btn-bearbeitungsmodus" disabled>Bearbeitungsmodus Ein</button>
+        <span id="bm-anzahl" class="anzahl"></span>
+      </div>
+      <div class="tabellen-scroll">
+        <table id="aenderungen-tabelle"><thead></thead><tbody></tbody></table>
+      </div>
     </div>
 
     <div class="karte">

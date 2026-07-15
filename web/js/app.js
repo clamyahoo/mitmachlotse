@@ -51,9 +51,10 @@ function aktualisiereKopf() {
                     "btn-quali", "btn-druck-optionen", "btn-druck-gruppen",
                     "btn-druck-einzeloption", "btn-raum-neu",
                     "btn-raum-loeschen", "btn-raum-auto", "btn-raum-reset",
-                    "btn-raum-druck"]) {
+                    "btn-raum-druck", "btn-bearbeitungsmodus"]) {
     $(id).disabled = !offen;
   }
+  syncBearbeitungsmodus();
   $("tn-suche").disabled = !offen;
   $("druck-option-select").disabled = !offen;
   const darfZuteilen = offen && Kontext.darfZuteilen();
@@ -64,10 +65,18 @@ function aktualisiereKopf() {
     // Struktur-Eingriffe (Optionen, Räume, Import, Bezeichnungen) nur für Admin
     for (const id of ["btn-opt-neu", "btn-opt-loeschen", "btn-labels",
                       "btn-tn-import", "btn-opt-import", "btn-raum-neu",
-                      "btn-raum-loeschen", "btn-raum-auto", "btn-raum-reset"]) {
+                      "btn-raum-loeschen", "btn-raum-auto", "btn-raum-reset",
+                      "btn-bearbeitungsmodus"]) {
       $(id).disabled = true;
     }
   }
+}
+
+function syncBearbeitungsmodus() {
+  const aktiv = db.istOffen() && db.istBearbeitungsmodus();
+  $("bm-badge").hidden = !aktiv;
+  $("btn-bearbeitungsmodus").textContent =
+    aktiv ? "Bearbeitungsmodus Aus" : "Bearbeitungsmodus Ein";
 }
 
 // ── Tabs ─────────────────────────────────────────────────────────────────────
@@ -144,10 +153,26 @@ function kopfzeile(theadEl, spalten) {
 // ── Tab 1: Teilnehmer ────────────────────────────────────────────────────────
 const tnMarkiert = new Set();
 
+/** Nachbearbeitungs-Markierung einer Projekt-Zelle setzen/entfernen:
+ *  gelber Hintergrund + "vorher: N" (durchgestrichen), wie am Desktop. */
+function markiereProjektZelle(td, baseline, aktuell) {
+  td.classList.remove("bm-geaendert");
+  td.querySelector(".bm-vorher")?.remove();
+  if (baseline === null || baseline === undefined || baseline === aktuell) return;
+  td.classList.add("bm-geaendert");
+  const hinweisEl = document.createElement("span");
+  hinweisEl.className = "bm-vorher";
+  const s = document.createElement("s");
+  s.textContent = `vorher: ${baseline || "–"}`;
+  hinweisEl.appendChild(s);
+  td.appendChild(hinweisEl);
+}
+
 function renderTeilnehmer() {
   const k = db.getFeldkonfig();
   const mw = k.max_wuensche;
   const projekte = db.getAlleProjekte();
+  const modusAktiv = db.istBearbeitungsmodus();
   const suchbegriff = $("tn-suche").value.trim().toLowerCase();
 
   const spalten = ["✓", "Nachname", "Vorname", k.stufe_label, k.stufenzusatz_label];
@@ -206,12 +231,15 @@ function renderTeilnehmer() {
       ));
     }
     sel.addEventListener("change", () => {
-      db.updateTeilnehmerFeld(t.id, "projekt", parseInt(sel.value, 10) || 0);
+      const neu = parseInt(sel.value, 10) || 0;
+      db.updateTeilnehmerFeld(t.id, "projekt", neu);
       setzeDirty(true);
       tr.querySelector(".fix-cb").disabled = sel.value === "0";
+      if (modusAktiv) markiereProjektZelle(tdProjekt, t.projekt_baseline, neu);
     });
     if (t.projekt === 0) tdProjekt.classList.add("warn");
     tdProjekt.appendChild(sel);
+    if (modusAktiv) markiereProjektZelle(tdProjekt, t.projekt_baseline, t.projekt);
     tr.appendChild(tdProjekt);
 
     const tdFix = checkboxZelle(t.fest_zugewiesen, (an) => {
@@ -350,6 +378,8 @@ function renderZuteilung() {
   if (vorher) dsel.value = vorher;
   $("btn-druck-optionen").textContent =
     `Gesamtliste nach ${pluralDativ(k.projekt_label)}`;
+
+  renderAenderungen();
 }
 
 // ── Solver ───────────────────────────────────────────────────────────────────
@@ -530,6 +560,67 @@ function starteImport(art) {
 
 // Dateien liest tabellendatei.js (CSV direkt, xlsx/ods via SheetJS lazy).
 
+// ── Nachbearbeitungsmodus ────────────────────────────────────────────────────
+function toggleBearbeitungsmodus() {
+  if (db.istBearbeitungsmodus()) {
+    if (!confirm(
+      "Bearbeitungsmodus ausschalten?\n\n" +
+      "Der aktuelle Zuteilungsstand gilt damit als fest. Alle " +
+      "Änderungsmarkierungen und durchgestrichenen Einträge verschwinden " +
+      "endgültig.")) return;
+    db.bearbeitungsmodusAus();
+    status("Bearbeitungsmodus beendet — der aktuelle Stand gilt als fest.");
+  } else {
+    if (!confirm(
+      "Bearbeitungsmodus einschalten?\n\n" +
+      "Der aktuelle Zuteilungsstand wird als Ausgangsstand festgehalten. " +
+      "Ab jetzt werden alle Umverteilungen sichtbar gemacht — in der " +
+      "Teilnehmertabelle, in der Übersicht der Änderungen und in den " +
+      "gedruckten Gruppenlisten.\n\n" +
+      "Die Raumzuteilung und alle anderen Funktionen bleiben unberührt.")) return;
+    db.bearbeitungsmodusEin();
+    status("Bearbeitungsmodus aktiv.");
+  }
+  setzeDirty(true);
+  renderAlles();
+}
+
+function renderAenderungen() {
+  const k = db.getFeldkonfig();
+  const aktiv = db.istBearbeitungsmodus();
+  const thead = $("aenderungen-tabelle").querySelector("thead");
+  const tbody = $("aenderungen-tabelle").querySelector("tbody");
+  thead.innerHTML = "";
+  tbody.innerHTML = "";
+  if (!aktiv) {
+    $("bm-anzahl").textContent = "";
+    return;
+  }
+  const projekte = Object.fromEntries(db.getAlleProjekte().map((p) => [p.nummer, p]));
+  const nameVon = (nr) => nr ? `${nr}: ${projekte[nr]?.projektname ?? "?"}` : "–";
+  const liste = db.getAenderungen();
+  $("bm-anzahl").textContent = liste.length
+    ? `${liste.length} Umverteilung(en) seit Modus-Start`
+    : "aktiv — noch keine Änderung";
+  if (!liste.length) return;
+  kopfzeile(thead, ["Name", k.stufe_label, "Vorher", "Jetzt", "Wunschrang erhalten"]);
+  for (const t of liste) {
+    const wuensche = [t.wunsch_1, t.wunsch_2, t.wunsch_3, t.wunsch_4, t.wunsch_5]
+      .slice(0, k.max_wuensche).filter((w) => w !== 0);
+    const rangIdx = wuensche.indexOf(t.projekt);
+    const rang = !t.projekt ? "–"
+      : rangIdx >= 0 ? `Wunsch ${rangIdx + 1}` : "kein Wunsch";
+    const zusatz = t.stufenzusatz && t.stufenzusatz !== "-" ? t.stufenzusatz : "";
+    const tr = document.createElement("tr");
+    tr.appendChild(textZelle(`${t.nachname}, ${t.vorname}`));
+    tr.appendChild(textZelle(`${t.stufe}${zusatz}`));
+    tr.appendChild(textZelle(nameVon(t.projekt_baseline)));
+    tr.appendChild(textZelle(nameVon(t.projekt)));
+    tr.appendChild(textZelle(rang));
+    tbody.appendChild(tr);
+  }
+}
+
 // ── Qualitätsprüfung ─────────────────────────────────────────────────────────
 function zeigeQualitaet() {
   const eintraege = pruefeQualitaet();
@@ -660,6 +751,9 @@ function init() {
     druck.drucke(`Teilnehmerliste — ${k.projekt_label} ${nr}`,
                  druck.einzelOption(nr));
   });
+
+  // Nachbearbeitungsmodus
+  $("btn-bearbeitungsmodus").addEventListener("click", toggleBearbeitungsmodus);
 
   // Raumplan-Tab (eigenes Modul)
   initRaumplan({ setzeDirty, status });

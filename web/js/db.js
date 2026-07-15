@@ -441,3 +441,30 @@ export function raumzuteilungAufheben() {
   run("UPDATE projekte SET raum_id = 0 WHERE raum_fixiert = 0");
   return n;
 }
+
+// ── Nachbearbeitungsmodus (Spiegel der database.py-Funktionen) ───────────────
+// Basis-Zuteilung + Flag leben in der .plf → der Modus überlebt Speichern/
+// Öffnen und ist mit der Desktop-App austauschbar.
+
+export function istBearbeitungsmodus() {
+  return getFeldkonfig().bearbeitungsmodus_aktiv === "1";
+}
+
+/** Aktuellen Zuteilungsstand als Basis festhalten und Modus aktivieren. */
+export function bearbeitungsmodusEin() {
+  run("UPDATE teilnehmer SET projekt_baseline = projekt");
+  setFeldkonfig({ bearbeitungsmodus_aktiv: "1" });
+}
+
+/** Modus beenden: Basis verwerfen, aktueller Stand gilt als fest. */
+export function bearbeitungsmodusAus() {
+  run("UPDATE teilnehmer SET projekt_baseline = NULL");
+  setFeldkonfig({ bearbeitungsmodus_aktiv: "0" });
+}
+
+/** Alle seit Modus-Start umverteilten Teilnehmer/innen. */
+export function getAenderungen() {
+  return getAlleTeilnehmer().filter(
+    (t) => t.projekt_baseline !== null && t.projekt_baseline !== t.projekt
+  );
+}

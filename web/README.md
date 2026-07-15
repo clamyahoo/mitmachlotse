@@ -88,9 +88,16 @@ befüllt werden, ohne die App umzubauen:
   Desktop; **Fix**-Spalte schützt Zuordnungen; **automatische
   Raumzuteilung** über das unveränderte Desktop-Modul `raumzuteilung.py`
   (Pyodide), „Raumzuteilung aufheben", Raumplan drucken
+- **Nachbearbeitungsmodus**: hält den Zuteilungsstand als Basis fest;
+  Umverteilungen erscheinen in der Teilnehmertabelle (gelbe Zelle,
+  „vorher: N" durchgestrichen), in der automatischen **Übersicht der
+  Änderungen** (Vorher/Jetzt/Wunschrang) und in den gedruckten
+  Gruppenlisten (Neuzugänge gelb mit Herkunft, Abgänge durchgestrichen
+  am Gruppenende). Der Modus wird mit der `.plf` gespeichert und ist mit
+  der Desktop-App austauschbar; Ausschalten macht den Stand endgültig fest
 - Wunschstatistik, Belegungsübersicht, CSV-Export der Gesamtliste
 
 ## Was (noch) fehlt
 
-- Nachbearbeitungsmodus-Anzeige, Mehrdatei-Import, Feldauswahl beim Druck,
-  Raumlisten-Import/-Export, Einrichtungsassistent
+- Mehrdatei-Import, Feldauswahl beim Druck, Raumlisten-Import/-Export,
+  Einrichtungsassistent
