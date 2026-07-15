@@ -17,6 +17,8 @@ import * as db from "./db.js";
 import * as solver from "./solver.js";
 import * as druck from "./druck.js";
 import { Kontext } from "./kontext.js";
+import { alsCsv, downloadText } from "./csv.js";
+import { waehleSpalten, filterGruppen } from "./spaltenwahl.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -276,10 +278,10 @@ async function autoZuteilen() {
   }
 }
 
-function druckeRaumplan() {
+async function druckeRaumplan() {
   const k = db.getFeldkonfig();
   const plan = db.getRaumplan();
-  druck.drucke("Raumplan", [{
+  const gruppen = [{
     titel: `Raumzuordnung (${plan.length} ${db.labelFormen(k.projekt_label).pluralNom})`,
     headers: ["Nr.", db.labelFormen(k.projekt_label).name, "Raum", "Zeit",
               "Plätze max", "belegt"],
@@ -287,7 +289,19 @@ function druckeRaumplan() {
       row.nummer, row.projektname || "", row.raum_name || "—",
       row.zeit || "", row.tnmax ?? "", row.belegt || 0,
     ]),
-  }]);
+  }];
+  const kept = await waehleSpalten(gruppen[0].headers);
+  if (!kept) return;
+  druck.drucke("Raumplan", filterGruppen(gruppen, kept));
+}
+
+/** Raumliste als CSV-Text — Spalten wie der Desktop-Export, damit die Datei
+ *  beim Reimport automatisch zugeordnet wird. (Exportiert für Tests.) */
+export function raumlisteAlsCsv() {
+  return alsCsv(
+    ["Raumname", "Kapazität", "Beschreibung"],
+    db.getAlleRaeume().map((r) => [r.name, r.kapazitaet, r.beschreibung])
+  );
 }
 
 export function initRaumplan(callbacks) {
@@ -315,4 +329,9 @@ export function initRaumplan(callbacks) {
     cb.status(`Raumzuteilung aufgehoben (${n} Zuordnungen entfernt, fixierte bleiben).`);
   });
   $("btn-raum-druck").addEventListener("click", druckeRaumplan);
+  $("btn-raum-export").addEventListener("click", () => {
+    downloadText("raumliste.csv", raumlisteAlsCsv());
+    cb.status("Raumliste als CSV exportiert.");
+  });
+  // btn-raum-import wird in app.js verdrahtet (dort lebt der Datei-Input).
 }

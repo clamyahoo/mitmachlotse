@@ -69,25 +69,30 @@ befüllt werden, ohne die App umzubauen:
 - **Bezeichnungen anpassen** (Angebots-/Gruppenbegriffe, Leitungsspalte,
   Anzahl Wunschränge) — mit Grammatikanpassung (Fugen-s, Plural) und
   Datenschutz-Löschung beim Deaktivieren der Leitungsspalte, wie am Desktop
-- **Import (CSV, xlsx, xls, ods)** für Teilnehmer/innen und Optionen:
+- **Import (CSV, xlsx, xls, ods)** für Teilnehmer/innen, Optionen und Räume:
   Spaltenzuordnung mit Auto-Erkennung (inkl. „Ganzer Name"- und „Klasse
   kombiniert"-Aufteilung), Vorschau, Anhängen/Ersetzen, Excel-tolerante
   Zahlen („1.0"), UTF-8/Windows-1252-Erkennung; kollidierende oder fehlende
   Optionsnummern werden automatisch weitergezählt. Excel-/ODS-Dateien liest
-  SheetJS (wird erst bei Bedarf geladen)
+  SheetJS (wird erst bei Bedarf geladen). Beim Teilnehmer-Import können
+  **mehrere Dateien auf einmal** gewählt werden — sie werden anhand der
+  Spaltennamen zusammengeführt (Reihenfolge der ersten Datei maßgeblich),
+  auch bei gemischten Formaten und Trennzeichen
 - Automatische Zuteilung mit Algorithmus A/B/C, Zuweisung aufheben,
   Fixierungen (werden vom Algorithmus respektiert — derselbe Code wie Desktop)
 - **Qualitätsprüfung** der Wunscheingaben (Unzulässig/Unvollständig/Keine/
   Mehrfach — dieselben Kategorien wie am Desktop)
 - **Listen & Druck**: Gesamtliste nach Optionen oder Gruppen sowie
   Einzellisten je Option über den Browser-Druckdialog (dort „Als PDF
-  speichern" wählen) — mit Seitenumbruch je Gruppe
-- **Raumplan**: Raumliste (Name/Kapazität/Beschreibung), Raum- und
-  Zeitzuordnung je Option mit Konfliktprüfung (Doppelbelegung rot,
-  Kapazität orange) und „Mehrfachbelegung erzwingen?"-Rückfrage wie am
-  Desktop; **Fix**-Spalte schützt Zuordnungen; **automatische
-  Raumzuteilung** über das unveränderte Desktop-Modul `raumzuteilung.py`
-  (Pyodide), „Raumzuteilung aufheben", Raumplan drucken
+  speichern" wählen) — mit Seitenumbruch je Gruppe und **Feldauswahl vor
+  jedem Druck** (Spalten an-/abwählbar, „Alle"/„Keine")
+- **Raumplan**: Raumliste (Name/Kapazität/Beschreibung) mit
+  **CSV-Import/-Export** (Exportdatei passt beim Reimport automatisch ins
+  Zuordnungsfenster), Raum- und Zeitzuordnung je Option mit Konfliktprüfung
+  (Doppelbelegung rot, Kapazität orange) und „Mehrfachbelegung
+  erzwingen?"-Rückfrage wie am Desktop; **Fix**-Spalte schützt Zuordnungen;
+  **automatische Raumzuteilung** über das unveränderte Desktop-Modul
+  `raumzuteilung.py` (Pyodide), „Raumzuteilung aufheben", Raumplan drucken
 - **Nachbearbeitungsmodus**: hält den Zuteilungsstand als Basis fest;
   Umverteilungen erscheinen in der Teilnehmertabelle (gelbe Zelle,
   „vorher: N" durchgestrichen), in der automatischen **Übersicht der
@@ -96,8 +101,12 @@ befüllt werden, ohne die App umzubauen:
   am Gruppenende). Der Modus wird mit der `.plf` gespeichert und ist mit
   der Desktop-App austauschbar; Ausschalten macht den Stand endgültig fest
 - Wunschstatistik, Belegungsübersicht, CSV-Export der Gesamtliste
+- **Erste-Schritte-Dialog** nach „Neue Planungsmappe": bietet Bezeichnungen,
+  Optionen-/Teilnehmer-Import und Beispieldaten direkt an (leichtgewichtiges
+  Gegenstück zum Desktop-Einrichtungsassistenten)
 
 ## Was (noch) fehlt
 
-- Mehrdatei-Import, Feldauswahl beim Druck, Raumlisten-Import/-Export,
-  Einrichtungsassistent
+- Mehrstufiger Einrichtungsassistent wie am Desktop (der Erste-Schritte-Dialog
+  deckt den Kern ab), Tabellen-Export-/Importassistent, Extra-Felder in den
+  Tabellen

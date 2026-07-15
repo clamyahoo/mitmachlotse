@@ -11,7 +11,7 @@ import * as db from "./db.js";
 import {
   erkenneTrennzeichen, parseCsv, autoMatch,
   splitGanzerName, splitKlasse, zahl, normStufe,
-  teilnehmerFelder, projektFelder,
+  teilnehmerFelder, projektFelder, raumFelder,
 } from "./importcsv.js";
 
 const TRENNZEICHEN = [
@@ -24,9 +24,10 @@ const TRENNZEICHEN = [
 export function oeffneImportDialog(art, csvText, onFertig) {
   const dlg = document.getElementById("dlg-import");
   const konfig = db.getFeldkonfig();
-  const felder = art === "teilnehmer" ? teilnehmerFelder(konfig) : projektFelder(konfig);
-  const titel = art === "teilnehmer"
-    ? "Teilnehmer/innen importieren"
+  const felder = art === "teilnehmer" ? teilnehmerFelder(konfig)
+    : art === "raeume" ? raumFelder() : projektFelder(konfig);
+  const titel = art === "teilnehmer" ? "Teilnehmer/innen importieren"
+    : art === "raeume" ? "Räume importieren"
     : `${db.labelFormen(konfig.projekt_label).pluralNom} importieren`;
 
   let delim = erkenneTrennzeichen(csvText);
@@ -168,7 +169,26 @@ function wert(row, selects, key) {
 
 function fuehreImportAus(art, daten, selects, anhaengen) {
   if (art === "teilnehmer") return importiereTeilnehmer(daten, selects, anhaengen);
+  if (art === "raeume") return importiereRaeume(daten, selects, anhaengen);
   return importiereProjekte(daten, selects, anhaengen);
+}
+
+function importiereRaeume(daten, selects, anhaengen) {
+  if (!anhaengen) {
+    db.deleteRaeume(db.getAlleRaeume().map((r) => r.id));
+  }
+  let anzahl = 0;
+  for (const row of daten) {
+    const name = wert(row, selects, "name");
+    if (!name || name === "-") continue;
+    db.insertRaumVoll({
+      name,
+      kapazitaet: zahl(wert(row, selects, "kapazitaet"), 0),
+      beschreibung: wert(row, selects, "beschreibung") || "",
+    });
+    anzahl++;
+  }
+  return anzahl;
 }
 
 function importiereTeilnehmer(daten, selects, anhaengen) {

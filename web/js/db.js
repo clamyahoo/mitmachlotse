@@ -398,6 +398,11 @@ export function insertRaum() {
   return query("SELECT last_insert_rowid() AS id")[0].id;
 }
 
+export function insertRaumVoll(r) {
+  run("INSERT INTO raeume (name, kapazitaet, beschreibung) VALUES (?, ?, ?)",
+      [r.name, r.kapazitaet, r.beschreibung]);
+}
+
 export function updateRaumFeld(id, feld, wert) {
   const erlaubt = new Set(["name", "kapazitaet", "beschreibung"]);
   if (!erlaubt.has(feld)) throw new Error(`Unbekanntes Raum-Feld: ${feld}`);

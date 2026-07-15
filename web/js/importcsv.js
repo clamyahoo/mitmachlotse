@@ -81,6 +81,12 @@ const PROJEKT_ALIASE = {
                 "maximalteilnehmer", "max. teilnehmer"],
 };
 
+const RAUM_ALIASE = {
+  name:         ["raumname", "raum", "name", "bezeichnung"],
+  kapazitaet:   ["kapazität", "kapazitaet", "plätze", "plaetze", "größe", "groesse"],
+  beschreibung: ["beschreibung", "bemerkung", "info", "hinweis"],
+};
+
 function findeAlias(aliase, headers) {
   const norm = headers.map((h) => String(h).trim().toLowerCase());
   for (const alias of aliase) {
@@ -103,8 +109,40 @@ export function autoMatch(art, feldKey, headers) {
     const idx = headers.findIndex((h) => muster.test(String(h).trim()));
     return idx >= 0 ? idx : null;
   }
-  const tabelle = art === "teilnehmer" ? TN_ALIASE : PROJEKT_ALIASE;
+  const tabelle = art === "teilnehmer" ? TN_ALIASE
+    : art === "raeume" ? RAUM_ALIASE : PROJEKT_ALIASE;
   return tabelle[feldKey] ? findeAlias(tabelle[feldKey], headers) : null;
+}
+
+/**
+ * Mehrere bereits eingelesene Tabellen-Texte zusammenführen (Mehrdatei-Import,
+ * wie am Desktop): jede Datei mit eigenem Trennzeichen parsen, Spalten anhand
+ * ihres Namens zuordnen — die Reihenfolge der ERSTEN Datei bleibt maßgeblich,
+ * in einzelnen Dateien fehlende Spalten werden mit Leerwerten aufgefüllt.
+ * Rückgabe: { headers, rows }
+ */
+export function mergeTabellen(texte) {
+  const tabellen = [];
+  for (const text of texte) {
+    const rows = parseCsv(text, erkenneTrennzeichen(text));
+    if (rows.length < 2) continue; // Kopf + mindestens eine Datenzeile
+    tabellen.push({
+      headers: rows[0].map((h) => String(h).trim()),
+      rows: rows.slice(1),
+    });
+  }
+  if (!tabellen.length) return { headers: [], rows: [] };
+  const master = tabellen[0].headers;
+  const rows = [];
+  for (const t of tabellen) {
+    const norm = t.headers.map((h) => h.toLowerCase());
+    const map = master.map((mh) => norm.indexOf(mh.toLowerCase()));
+    for (const row of t.rows) {
+      rows.push(master.map((_, i) =>
+        map[i] >= 0 && map[i] < row.length ? row[map[i]] : ""));
+    }
+  }
+  return { headers: master, rows };
 }
 
 // ── Wert-Helfer (Spiegel der Desktop-Koersionen) ─────────────────────────────
@@ -172,5 +210,13 @@ export function projektFelder(konfig) {
     { key: "stufenmax",   label: `${konfig.stufe_label} max` },
     { key: "tnmin",       label: "Plätze min" },
     { key: "tnmax",       label: "Plätze max" },
+  ];
+}
+
+export function raumFelder() {
+  return [
+    { key: "name",         label: "Raumname" },
+    { key: "kapazitaet",   label: "Kapazität" },
+    { key: "beschreibung", label: "Beschreibung" },
   ];
 }

@@ -20,6 +20,8 @@ import * as druck from "./druck.js";
 import { pruefeQualitaet } from "./quali.js";
 import { liesTabellenDatei } from "./tabellendatei.js";
 import { initRaumplan, renderRaumplan } from "./raumplan.js";
+import { waehleSpalten, filterGruppen } from "./spaltenwahl.js";
+import { mergeTabellen } from "./importcsv.js";
 
 // Grammatik-Formen der Labels kommen zentral aus db.labelFormen()
 // (Fugen-s, Plural Nominativ/Dativ) — gespiegelt von der Desktop-App.
@@ -51,7 +53,8 @@ function aktualisiereKopf() {
                     "btn-quali", "btn-druck-optionen", "btn-druck-gruppen",
                     "btn-druck-einzeloption", "btn-raum-neu",
                     "btn-raum-loeschen", "btn-raum-auto", "btn-raum-reset",
-                    "btn-raum-druck", "btn-bearbeitungsmodus"]) {
+                    "btn-raum-druck", "btn-bearbeitungsmodus",
+                    "btn-raum-import", "btn-raum-export"]) {
     $(id).disabled = !offen;
   }
   syncBearbeitungsmodus();
@@ -66,7 +69,7 @@ function aktualisiereKopf() {
     for (const id of ["btn-opt-neu", "btn-opt-loeschen", "btn-labels",
                       "btn-tn-import", "btn-opt-import", "btn-raum-neu",
                       "btn-raum-loeschen", "btn-raum-auto", "btn-raum-reset",
-                      "btn-bearbeitungsmodus"]) {
+                      "btn-bearbeitungsmodus", "btn-raum-import"]) {
       $(id).disabled = true;
     }
   }
@@ -463,6 +466,8 @@ async function neueMappe() {
   setzeDirty(false);
   renderAlles();
   status("Neue, leere Planungsmappe angelegt (Desktop-kompatibles .plf-Schema).");
+  // Erste Schritte anbieten (leichter Einrichtungsassistent)
+  $("dlg-start").showModal();
 }
 
 async function oeffneDatei(file) {
@@ -555,6 +560,9 @@ let importArt = "teilnehmer";
 
 function starteImport(art) {
   importArt = art;
+  // Mehrdatei-Zusammenführung nur für Teilnehmerlisten (wie am Desktop):
+  // dort kommen Wunschlisten oft je Gruppe als eigene Datei zurück.
+  $("import-datei").multiple = art === "teilnehmer";
   $("import-datei").click();
 }
 
@@ -714,49 +722,78 @@ function init() {
   $("btn-tn-import").addEventListener("click", () => starteImport("teilnehmer"));
   $("btn-opt-import").addEventListener("click", () => starteImport("optionen"));
   $("import-datei").addEventListener("change", async (e) => {
-    const file = e.target.files[0];
+    const files = [...e.target.files];
     e.target.value = "";
-    if (!file) return;
+    if (!files.length) return;
     let text;
     try {
-      text = await liesTabellenDatei(file, status);
+      if (files.length === 1) {
+        text = await liesTabellenDatei(files[0], status);
+      } else {
+        // Mehrdatei-Zusammenführung: Spalten anhand ihres Namens zuordnen,
+        // Reihenfolge der ersten Datei bleibt maßgeblich (wie am Desktop).
+        status(`Führe ${files.length} Dateien zusammen …`);
+        const texte = [];
+        for (const f of files) texte.push(await liesTabellenDatei(f, status));
+        const { headers, rows } = mergeTabellen(texte);
+        if (!headers.length) throw new Error("Keine Datenzeilen gefunden.");
+        text = alsCsv(headers, rows).replace(/^\uFEFF/, "");
+      }
     } catch (fehler) {
       alert("Datei konnte nicht gelesen werden: " + fehler.message);
       status("Bereit.");
       return;
     }
+    const quelle = files.length === 1 ? files[0].name : `${files.length} Dateien zusammengeführt`;
     oeffneImportDialog(importArt, text, (anzahl) => {
       setzeDirty(true);
       renderAlles();
-      status(`${anzahl} Datensätze importiert (${file.name}).`);
+      status(`${anzahl} Datensätze importiert (${quelle}).`);
     });
   });
 
   // Qualitätsprüfung
   $("btn-quali").addEventListener("click", zeigeQualitaet);
 
-  // Listen & Druck (Browser-Druckdialog, dort auch "Als PDF speichern")
+  // Listen & Druck (Browser-Druckdialog, dort auch "Als PDF speichern").
+  // Vor jedem Druck erscheint die Feldauswahl (wie am Desktop).
+  const druckeMitAuswahl = async (titel, gruppen) => {
+    if (!gruppen.length) { alert("Keine Daten zum Drucken vorhanden."); return; }
+    const kept = await waehleSpalten(gruppen[0].headers);
+    if (!kept) return;
+    druck.drucke(titel, filterGruppen(gruppen, kept));
+  };
   $("btn-druck-optionen").addEventListener("click", () => {
     const k = db.getFeldkonfig();
-    druck.drucke(`Gesamtliste nach ${pluralDativ(k.projekt_label)}`,
-                 druck.gesamtNachOptionen());
+    druckeMitAuswahl(`Gesamtliste nach ${pluralDativ(k.projekt_label)}`,
+                     druck.gesamtNachOptionen());
   });
   $("btn-druck-gruppen").addEventListener("click", () => {
-    druck.drucke("Gesamtliste nach Gruppen", druck.gesamtNachGruppen());
+    druckeMitAuswahl("Gesamtliste nach Gruppen", druck.gesamtNachGruppen());
   });
   $("btn-druck-einzeloption").addEventListener("click", () => {
     const nr = parseInt($("druck-option-select").value, 10);
     if (!nr) return;
     const k = db.getFeldkonfig();
-    druck.drucke(`Teilnehmerliste — ${k.projekt_label} ${nr}`,
-                 druck.einzelOption(nr));
+    druckeMitAuswahl(`Teilnehmerliste — ${k.projekt_label} ${nr}`,
+                     druck.einzelOption(nr));
   });
 
   // Nachbearbeitungsmodus
   $("btn-bearbeitungsmodus").addEventListener("click", toggleBearbeitungsmodus);
 
-  // Raumplan-Tab (eigenes Modul)
+  // Raumplan-Tab (eigenes Modul); der Raumlisten-Import nutzt den zentralen
+  // Datei-Input hier in app.js
   initRaumplan({ setzeDirty, status });
+  $("btn-raum-import").addEventListener("click", () => starteImport("raeume"));
+
+  // Erste-Schritte-Dialog (nach "Neue Planungsmappe")
+  const startAktion = (fn) => () => { $("dlg-start").close(); fn(); };
+  $("start-labels").addEventListener("click", startAktion(zeigeLabelsDialog));
+  $("start-optionen").addEventListener("click", startAktion(() => starteImport("optionen")));
+  $("start-teilnehmer").addEventListener("click", startAktion(() => starteImport("teilnehmer")));
+  $("start-beispiel").addEventListener("click", startAktion(ladeBeispieldaten));
+  $("start-los").addEventListener("click", () => $("dlg-start").close());
 
   window.addEventListener("beforeunload", (e) => {
     if (dirty) { e.preventDefault(); e.returnValue = ""; }

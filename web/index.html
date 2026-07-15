@@ -71,6 +71,8 @@
       <div class="aktionszeile">
         <button id="btn-raum-neu" disabled>+ Raum</button>
         <button id="btn-raum-loeschen" disabled>✗ Markierte löschen</button>
+        <button id="btn-raum-import" disabled>Importieren …</button>
+        <button id="btn-raum-export" disabled>Exportieren (CSV)</button>
         <span id="raum-anzahl" class="anzahl"></span>
       </div>
       <div class="tabellen-scroll">
@@ -217,6 +219,26 @@
 
 <!-- ── Dialog: CSV-Import (Inhalt wird dynamisch aufgebaut) ── -->
 <dialog id="dlg-import"></dialog>
+
+<!-- ── Dialog: Feldauswahl vor Druck (Inhalt dynamisch) ── -->
+<dialog id="dlg-spalten"></dialog>
+
+<!-- ── Dialog: Erste Schritte (nach "Neue Planungsmappe") ── -->
+<dialog id="dlg-start">
+  <h2>Neue Planungsmappe</h2>
+  <p class="hinweis">Diese Planungsmappe ist noch leer. Wie möchten Sie
+    beginnen? Alle Schritte sind jederzeit auch über die Werkzeugleiste und
+    die Tabs erreichbar.</p>
+  <div class="start-buttons">
+    <button id="start-labels">Bezeichnungen anpassen …</button>
+    <button id="start-optionen">Optionen importieren …</button>
+    <button id="start-teilnehmer">Teilnehmer/innen importieren …</button>
+    <button id="start-beispiel">Beispieldaten ausprobieren</button>
+  </div>
+  <div class="dialog-buttons">
+    <button class="sekundaer" id="start-los">Einfach loslegen</button>
+  </div>
+</dialog>
 
 <!-- ── Druckbereich (nur in der Druckansicht sichtbar) ── -->
 <div id="druckbereich"></div>
