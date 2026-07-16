@@ -212,6 +212,16 @@ dialog h2 { margin-top: 0; font-size: 15px; color: #2c3e50; }
 button.sekundaer { background: #7f8c8d; }
 button.sekundaer:hover:not(:disabled) { background: #95a5a6; }
 
+/* Bezeichnungen-Dialog: ausklappbare Zusatzfelder */
+.lbl-extras { margin: 6px 0 2px; }
+.lbl-extras summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #2c3e50;
+  padding: 4px 0;
+}
+.lbl-extras[open] { border-top: 1px solid #eee; padding-top: 8px; }
+
 /* Import-Dialog: Zuordnungstabelle + Mini-Vorschau */
 .map-tabelle { width: 100%; border-collapse: collapse; margin: 8px 0; }
 .map-tabelle th, .map-tabelle td {
@@ -242,14 +252,54 @@ button.sekundaer:hover:not(:disabled) { background: #95a5a6; }
 /* Qualitätsprüfung */
 #quali-tabelle td.icon { width: 2em; text-align: center; }
 
-/* Erste-Schritte-Dialog */
-.start-buttons {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin: 12px 0;
+/* Mehrstufige Assistenten (Einrichtung + Tabellen-Workflow) */
+.assistent { max-width: 620px; }
+.assi-schritt {
+  text-align: right;
+  font-size: 11px;
+  color: #888;
+  min-height: 14px;
 }
-.start-buttons button { text-align: left; }
+.assi-body { min-height: 180px; }
+.assi-body p { margin: 0 0 10px; line-height: 1.45; }
+.assi-body button { margin: 4px 0; }
+.assi-logo { display: block; margin: 0 auto 6px; height: 72px; }
+.assi-titel { font-size: 20px; font-weight: bold; color: #1F3864; }
+.assi-zentriert { text-align: center; }
+.assi-nav {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 16px;
+  border-top: 1px solid #eee;
+  padding-top: 12px;
+}
+.assi-nav-links, .assi-nav-rechts { display: flex; gap: 8px; }
+.assi-wahl { display: flex; flex-direction: column; gap: 8px; margin: 8px 0; }
+.assi-radio {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+.assi-radio:hover { background: #f4f8fc; }
+.assi-radio input { margin-top: 3px; }
+.assi-status {
+  font-size: 12px;
+  color: #777;
+  font-style: italic;
+  margin-top: 6px;
+}
+.assi-status.ok { color: #218838; font-style: normal; font-weight: 600; }
+.assi-praxis {
+  background: #eaf2fb;
+  padding: 8px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+}
 
 /* Feldauswahl-Dialog */
 .spalten-liste {

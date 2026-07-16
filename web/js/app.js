@@ -22,6 +22,8 @@ import { liesTabellenDatei } from "./tabellendatei.js";
 import { initRaumplan, renderRaumplan } from "./raumplan.js";
 import { waehleSpalten, filterGruppen } from "./spaltenwahl.js";
 import { mergeTabellen } from "./importcsv.js";
+import { initAssistenten, zeigeEinrichtungsassistent, zeigeTabellenassistent }
+  from "./assistenten.js";
 
 // Grammatik-Formen der Labels kommen zentral aus db.labelFormen()
 // (Fugen-s, Plural Nominativ/Dativ) — gespiegelt von der Desktop-App.
@@ -49,7 +51,7 @@ function aktualisiereKopf() {
   for (const id of ["btn-speichern", "btn-speichern-als", "btn-tn-neu",
                     "btn-tn-loeschen", "btn-opt-neu", "btn-opt-loeschen",
                     "btn-csv-gesamt", "btn-zuteilung-aufheben",
-                    "btn-labels", "btn-tn-import", "btn-opt-import",
+                    "btn-labels", "btn-tabellen", "btn-tn-import", "btn-opt-import",
                     "btn-quali", "btn-druck-optionen", "btn-druck-gruppen",
                     "btn-druck-einzeloption", "btn-raum-neu",
                     "btn-raum-loeschen", "btn-raum-auto", "btn-raum-reset",
@@ -67,9 +69,9 @@ function aktualisiereKopf() {
   if (!Kontext.darfOptionenBearbeiten()) {
     // Struktur-Eingriffe (Optionen, Räume, Import, Bezeichnungen) nur für Admin
     for (const id of ["btn-opt-neu", "btn-opt-loeschen", "btn-labels",
-                      "btn-tn-import", "btn-opt-import", "btn-raum-neu",
-                      "btn-raum-loeschen", "btn-raum-auto", "btn-raum-reset",
-                      "btn-bearbeitungsmodus", "btn-raum-import"]) {
+                      "btn-tabellen", "btn-tn-import", "btn-opt-import",
+                      "btn-raum-neu", "btn-raum-loeschen", "btn-raum-auto",
+                      "btn-raum-reset", "btn-bearbeitungsmodus", "btn-raum-import"]) {
       $(id).disabled = true;
     }
   }
@@ -153,6 +155,18 @@ function kopfzeile(theadEl, spalten) {
   theadEl.appendChild(tr);
 }
 
+/** Benannte Zusatzfelder (DB-Spalten extra_1..3) als [{key, label}] — nur die,
+ *  deren Bezeichnung gesetzt ist. praefix: "extra" (Teilnehmer/innen) oder
+ *  "projekt_extra" (Optionen). Spiegel der Desktop-Spaltenlogik. */
+function aktiveExtras(k, praefix) {
+  const felder = [];
+  for (let i = 1; i <= 3; i++) {
+    const label = (k[`${praefix}_${i}_label`] || "").trim();
+    if (label) felder.push({ key: `extra_${i}`, label });
+  }
+  return felder;
+}
+
 // ── Tab 1: Teilnehmer ────────────────────────────────────────────────────────
 const tnMarkiert = new Set();
 
@@ -178,7 +192,9 @@ function renderTeilnehmer() {
   const modusAktiv = db.istBearbeitungsmodus();
   const suchbegriff = $("tn-suche").value.trim().toLowerCase();
 
+  const tnExtras = aktiveExtras(k, "extra");
   const spalten = ["✓", "Nachname", "Vorname", k.stufe_label, k.stufenzusatz_label];
+  for (const e of tnExtras) spalten.push(e.label);
   for (let i = 1; i <= mw; i++) spalten.push(`W${i}`);
   spalten.push(k.projekt_label, "Fixiert");
   kopfzeile($("tn-tabelle").querySelector("thead"), spalten);
@@ -213,6 +229,7 @@ function renderTeilnehmer() {
     tr.appendChild(textFeld("vorname"));
     tr.appendChild(textFeld("stufe"));
     tr.appendChild(textFeld("stufenzusatz"));
+    for (const e of tnExtras) tr.appendChild(textFeld(e.key));
 
     for (let i = 1; i <= mw; i++) {
       const feld = `wunsch_${i}`;
@@ -268,10 +285,12 @@ function renderOptionen() {
   const belegung = db.getBelegung();
   const darf = Kontext.darfOptionenBearbeiten();
 
+  const optExtras = aktiveExtras(k, "projekt_extra");
   const spalten = ["✓", "Nr."];
   if (mitLeitung) spalten.push(k.leitung_label);
-  spalten.push(db.labelFormen(k.projekt_label).name,
-               `${k.stufe_label} min`, `${k.stufe_label} max`,
+  spalten.push(db.labelFormen(k.projekt_label).name);
+  for (const e of optExtras) spalten.push(e.label);
+  spalten.push(`${k.stufe_label} min`, `${k.stufe_label} max`,
                "Plätze min", "Plätze max", "belegt");
   kopfzeile($("opt-tabelle").querySelector("thead"), spalten);
 
@@ -310,6 +329,13 @@ function renderOptionen() {
       db.updateProjektFeld(p.id, "projektname", inp.value);
       setzeDirty(true);
     }, { disabled: !darf }));
+
+    for (const e of optExtras) {
+      tr.appendChild(inputZelle("text", p[e.key], (inp) => {
+        db.updateProjektFeld(p.id, e.key, inp.value);
+        setzeDirty(true);
+      }, { disabled: !darf }));
+    }
 
     for (const feld of ["stufenmin", "stufenmax", "tnmin", "tnmax"]) {
       tr.appendChild(inputZelle("number", p[feld], (inp) => {
@@ -466,8 +492,8 @@ async function neueMappe() {
   setzeDirty(false);
   renderAlles();
   status("Neue, leere Planungsmappe angelegt (Desktop-kompatibles .plf-Schema).");
-  // Erste Schritte anbieten (leichter Einrichtungsassistent)
-  $("dlg-start").showModal();
+  // Mehrstufigen Einrichtungsassistenten anbieten (wie am Desktop)
+  zeigeEinrichtungsassistent();
 }
 
 async function oeffneDatei(file) {
@@ -487,25 +513,77 @@ async function oeffneDatei(file) {
 
 function exportGesamtCsv() {
   const k = db.getFeldkonfig();
+  const tnExtras = aktiveExtras(k, "extra");
   const projekte = Object.fromEntries(db.getAlleProjekte().map((p) => [p.nummer, p]));
   const headers = ["Name", k.stufe_label, k.stufenzusatz_label,
+                   ...tnExtras.map((e) => e.label),
                    `${k.projekt_label}-Nr.`, k.projekt_label];
   const rows = db.getAlleTeilnehmer().map((t) => [
     `${t.nachname}, ${t.vorname}`, t.stufe, t.stufenzusatz,
+    ...tnExtras.map((e) => t[e.key] || ""),
     t.projekt || 0, t.projekt ? (projekte[t.projekt]?.projektname ?? "?") : "",
   ]);
   downloadText("gesamtliste.csv", alsCsv(headers, rows));
   status("Gesamtliste als CSV exportiert.");
 }
 
+/** Wunschlisten-Vorlage zum externen Ausfüllen (Tabellen-Assistent, Schritt 3):
+ *  Grunddaten + Wunschspalten (aktuelle Werte, meist leer). proGruppe = true →
+ *  je Gruppe (Stufe+Zusatz) eine eigene Datei. Gibt die Dateianzahl zurück. */
+function exportWunschlisten(proGruppe) {
+  const k = db.getFeldkonfig();
+  const mw = k.max_wuensche;
+  const tnExtras = aktiveExtras(k, "extra");
+  const headers = ["Nachname", "Vorname", k.stufe_label, k.stufenzusatz_label,
+                   ...tnExtras.map((e) => e.label)];
+  for (let i = 1; i <= mw; i++) headers.push(`Wunsch ${i}`);
+  const zeileVon = (t) => [
+    t.nachname, t.vorname, t.stufe, t.stufenzusatz,
+    ...tnExtras.map((e) => t[e.key] || ""),
+    ...Array.from({ length: mw }, (_, i) => t[`wunsch_${i + 1}`] || ""),
+  ];
+  const tn = db.getAlleTeilnehmer();
+  if (!proGruppe) {
+    downloadText("wunschlisten.csv", alsCsv(headers, tn.map(zeileVon)));
+    status("Wunschlisten-Vorlage als CSV exportiert.");
+    return 1;
+  }
+  const gruppen = new Map();
+  for (const t of tn) {
+    const zusatz = t.stufenzusatz && t.stufenzusatz !== "-" ? t.stufenzusatz : "";
+    const key = `${t.stufe}${zusatz}`;
+    if (!gruppen.has(key)) gruppen.set(key, []);
+    gruppen.get(key).push(t);
+  }
+  let n = 0;
+  for (const [name, mitglieder] of gruppen) {
+    const sicher = name.replace(/[^0-9A-Za-zÄÖÜäöüß.-]+/g, "_") || "gruppe";
+    downloadText(`wunschliste_${sicher}.csv`, alsCsv(headers, mitglieder.map(zeileVon)));
+    n++;
+  }
+  status(`Wunschlisten-Vorlage: ${n} Gruppendatei(en) exportiert.`);
+  return n;
+}
+
+/** Datei-Öffnen-Dialog auslösen (für den Einrichtungsassistenten). */
+function oeffneDateiPicker() { $("datei-input").click(); }
+
 // ── Bezeichnungen anpassen ───────────────────────────────────────────────────
-function zeigeLabelsDialog() {
+function zeigeLabelsDialog(onClose) {
   const k = db.getFeldkonfig();
   $("lbl-projekt").value = k.projekt_label;
   $("lbl-stufe").value = k.stufe_label;
   $("lbl-zusatz").value = k.stufenzusatz_label;
   $("lbl-leitung").value = k.leitung_label;
   $("lbl-maxw").value = String(k.max_wuensche);
+  for (let i = 1; i <= 3; i++) {
+    $(`lbl-tn-extra${i}`).value = k[`extra_${i}_label`] || "";
+    $(`lbl-opt-extra${i}`).value = k[`projekt_extra_${i}_label`] || "";
+  }
+  // Assistenten können auf das Schließen reagieren (Statuszeile aktualisieren).
+  if (typeof onClose === "function") {
+    $("dlg-labels").addEventListener("close", () => onClose(), { once: true });
+  }
   $("dlg-labels").showModal();
 }
 
@@ -528,6 +606,12 @@ function speichereLabels() {
     stufenzusatz_label: $("lbl-zusatz").value.trim() || "Gruppenzusatz",
     leitung_label: neuLeitung,
     max_wuensche: $("lbl-maxw").value,
+    extra_1_label: $("lbl-tn-extra1").value.trim(),
+    extra_2_label: $("lbl-tn-extra2").value.trim(),
+    extra_3_label: $("lbl-tn-extra3").value.trim(),
+    projekt_extra_1_label: $("lbl-opt-extra1").value.trim(),
+    projekt_extra_2_label: $("lbl-opt-extra2").value.trim(),
+    projekt_extra_3_label: $("lbl-opt-extra3").value.trim(),
   });
   $("dlg-labels").close();
   setzeDirty(true);
@@ -557,9 +641,11 @@ async function ladeBeispieldaten() {
 
 // ── CSV-Import ───────────────────────────────────────────────────────────────
 let importArt = "teilnehmer";
+let importOnDone = null;   // optionaler Callback (Assistenten), erhält Anzahl
 
-function starteImport(art) {
+function starteImport(art, onDone = null) {
   importArt = art;
+  importOnDone = onDone;
   // Mehrdatei-Zusammenführung nur für Teilnehmerlisten (wie am Desktop):
   // dort kommen Wunschlisten oft je Gruppe als eigene Datei zurück.
   $("import-datei").multiple = art === "teilnehmer";
@@ -724,6 +810,7 @@ function init() {
   $("import-datei").addEventListener("change", async (e) => {
     const files = [...e.target.files];
     e.target.value = "";
+    const onDone = importOnDone; importOnDone = null; // Callback für diesen Lauf
     if (!files.length) return;
     let text;
     try {
@@ -749,6 +836,7 @@ function init() {
       setzeDirty(true);
       renderAlles();
       status(`${anzahl} Datensätze importiert (${quelle}).`);
+      if (onDone) onDone(anzahl);
     });
   });
 
@@ -787,13 +875,13 @@ function init() {
   initRaumplan({ setzeDirty, status });
   $("btn-raum-import").addEventListener("click", () => starteImport("raeume"));
 
-  // Erste-Schritte-Dialog (nach "Neue Planungsmappe")
-  const startAktion = (fn) => () => { $("dlg-start").close(); fn(); };
-  $("start-labels").addEventListener("click", startAktion(zeigeLabelsDialog));
-  $("start-optionen").addEventListener("click", startAktion(() => starteImport("optionen")));
-  $("start-teilnehmer").addEventListener("click", startAktion(() => starteImport("teilnehmer")));
-  $("start-beispiel").addEventListener("click", startAktion(ladeBeispieldaten));
-  $("start-los").addEventListener("click", () => $("dlg-start").close());
+  // Mehrstufige Assistenten (Einrichtung + Tabellen-Workflow)
+  initAssistenten({
+    status, renderAlles,
+    zeigeLabelsDialog, starteImport, ladeBeispieldaten,
+    oeffneDateiPicker, exportWunschlisten,
+  });
+  $("btn-tabellen").addEventListener("click", zeigeTabellenassistent);
 
   window.addEventListener("beforeunload", (e) => {
     if (dirty) { e.preventDefault(); e.returnValue = ""; }

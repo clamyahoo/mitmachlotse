@@ -367,20 +367,23 @@ export function insertTeilnehmerVoll(r) {
   run(
     `INSERT INTO teilnehmer
        (nachname, vorname, stufe, stufenzusatz, geschlecht,
-        wunsch_1, wunsch_2, wunsch_3, wunsch_4, wunsch_5, projekt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+        wunsch_1, wunsch_2, wunsch_3, wunsch_4, wunsch_5, projekt,
+        extra_1, extra_2, extra_3)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
     [r.nachname, r.vorname, r.stufe, r.stufenzusatz, r.geschlecht,
-     r.wunsch_1, r.wunsch_2, r.wunsch_3, r.wunsch_4, r.wunsch_5]
+     r.wunsch_1, r.wunsch_2, r.wunsch_3, r.wunsch_4, r.wunsch_5,
+     r.extra_1 || "", r.extra_2 || "", r.extra_3 || ""]
   );
 }
 
 export function insertProjektVoll(r) {
   run(
     `INSERT INTO projekte
-       (nummer, projektname, leitung, stufenmin, stufenmax, tnmin, tnmax)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+       (nummer, projektname, leitung, stufenmin, stufenmax, tnmin, tnmax,
+        extra_1, extra_2, extra_3)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [r.nummer, r.projektname, r.leitung, r.stufenmin, r.stufenmax,
-     r.tnmin, r.tnmax]
+     r.tnmin, r.tnmax, r.extra_1 || "", r.extra_2 || "", r.extra_3 || ""]
   );
 }
 

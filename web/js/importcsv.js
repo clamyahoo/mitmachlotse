@@ -198,11 +198,16 @@ export function teilnehmerFelder(konfig) {
   for (let i = 1; i <= konfig.max_wuensche; i++) {
     felder.push({ key: `wunsch_${i}`, label: `Wunsch ${i}` });
   }
+  // Optionale Zusatzfelder — nur anbieten, wenn benannt (wie am Desktop)
+  for (let i = 1; i <= 3; i++) {
+    const lbl = (konfig[`extra_${i}_label`] || "").trim();
+    if (lbl) felder.push({ key: `extra_${i}`, label: lbl });
+  }
   return felder;
 }
 
 export function projektFelder(konfig) {
-  return [
+  const felder = [
     { key: "nummer",      label: "Nummer" },
     { key: "leitung",     label: konfig.leitung_label || "Leitung / Ansprechperson" },
     { key: "projektname", label: labelFormen(konfig.projekt_label).name },
@@ -211,6 +216,11 @@ export function projektFelder(konfig) {
     { key: "tnmin",       label: "Plätze min" },
     { key: "tnmax",       label: "Plätze max" },
   ];
+  for (let i = 1; i <= 3; i++) {
+    const lbl = (konfig[`projekt_extra_${i}_label`] || "").trim();
+    if (lbl) felder.push({ key: `extra_${i}`, label: lbl });
+  }
+  return felder;
 }
 
 export function raumFelder() {

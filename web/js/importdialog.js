@@ -86,7 +86,14 @@ export function oeffneImportDialog(art, csvText, onFertig) {
       const sel = document.createElement("select");
       sel.appendChild(new Option("(nicht importieren)", ""));
       headers.forEach((h, i) => sel.appendChild(new Option(h, String(i))));
-      const auto = autoMatch(art, feld.key, headers);
+      let auto = autoMatch(art, feld.key, headers);
+      // Zusatzfelder haben keine festen Aliase — greifen, wenn eine Quellspalte
+      // exakt so heißt wie das konfigurierte Label (typisch beim Reimport).
+      if (auto === null && feld.key.startsWith("extra_")) {
+        const idx = headers.findIndex(
+          (h) => h.trim().toLowerCase() === feld.label.trim().toLowerCase());
+        if (idx >= 0) auto = idx;
+      }
       if (auto !== null) sel.value = String(auto);
       selects[feld.key] = sel;
       tdS.appendChild(sel);
@@ -225,6 +232,10 @@ function importiereTeilnehmer(daten, selects, anhaengen) {
       const v = wert(row, selects, `wunsch_${i}`);
       if (v !== null) rec[`wunsch_${i}`] = zahl(v, 0);
     }
+    for (let i = 1; i <= 3; i++) {
+      const v = wert(row, selects, `extra_${i}`);
+      if (v !== null) rec[`extra_${i}`] = v;
+    }
     // Nur importieren, wenn mindestens ein Nachname vorhanden (wie Desktop)
     if (rec.nachname && rec.nachname !== "-") {
       db.insertTeilnehmerVoll(rec);
@@ -256,6 +267,9 @@ function importiereProjekte(daten, selects, anhaengen) {
       stufenmax: zahl(wert(row, selects, "stufenmax"), 0),
       tnmin: zahl(wert(row, selects, "tnmin"), 0),
       tnmax: zahl(wert(row, selects, "tnmax"), 0),
+      extra_1: wert(row, selects, "extra_1") || "",
+      extra_2: wert(row, selects, "extra_2") || "",
+      extra_3: wert(row, selects, "extra_3") || "",
     });
     anzahl++;
   }

@@ -31,6 +31,7 @@ Zuteilungslauf (Pyodide von CDN, ~10 MB) benötigt. Danach cached der Browser.
 | `js/kontext.js` | Kontext-Schicht: Nutzer/Rolle/Gruppen — heute „lokal, ohne Anmeldung", vorbereitet für Server-Login und Moodle/LTI |
 | `js/csv.js` | Einfacher CSV-Export |
 | `js/importcsv.js` / `js/importdialog.js` | Import mit Spaltenzuordnung (Auto-Erkennung, Vorschau, Anhängen/Ersetzen) |
+| `js/assistenten.js` | Mehrstufige Assistenten: Einrichtung (nach „Neue Planungsmappe") und Tabellen-Export-/Importworkflow — Web-Gegenstücke zu `EinrichtungsassistentDialog`/`TabellenAssistentDialog` |
 | `js/tabellendatei.js` | Liest CSV direkt; xlsx/xls/ods über SheetJS (lazy vom CDN, erst bei Bedarf) |
 | `js/quali.js` | Qualitätsprüfung der Wunscheingaben (4 Kategorien wie Desktop) |
 | `js/druck.js` | Druck-Listen (Gesamtliste nach Optionen/Gruppen, Einzellisten, Raumplan) über den Browser-Druckdialog — dort auch „Als PDF speichern" |
@@ -67,8 +68,11 @@ befüllt werden, ohne die App umzubauen:
 - **Beispieldaten ausprobieren** (ein Klick lädt die Beispiel-Planungsmappe)
 - Teilnehmer/innen und Optionen anlegen, bearbeiten, löschen, suchen
 - **Bezeichnungen anpassen** (Angebots-/Gruppenbegriffe, Leitungsspalte,
-  Anzahl Wunschränge) — mit Grammatikanpassung (Fugen-s, Plural) und
-  Datenschutz-Löschung beim Deaktivieren der Leitungsspalte, wie am Desktop
+  Anzahl Wunschränge, bis zu je drei benannte **Zusatzfelder** für
+  Teilnehmer/innen und Optionen) — mit Grammatikanpassung (Fugen-s, Plural) und
+  Datenschutz-Löschung beim Deaktivieren der Leitungsspalte, wie am Desktop.
+  Benannte Zusatzfelder erscheinen als eigene Spalten in den Tabellen, im
+  Import (Auto-Zuordnung bei Namensgleichheit) und im CSV-Export
 - **Import (CSV, xlsx, xls, ods)** für Teilnehmer/innen, Optionen und Räume:
   Spaltenzuordnung mit Auto-Erkennung (inkl. „Ganzer Name"- und „Klasse
   kombiniert"-Aufteilung), Vorschau, Anhängen/Ersetzen, Excel-tolerante
@@ -101,12 +105,19 @@ befüllt werden, ohne die App umzubauen:
   am Gruppenende). Der Modus wird mit der `.plf` gespeichert und ist mit
   der Desktop-App austauschbar; Ausschalten macht den Stand endgültig fest
 - Wunschstatistik, Belegungsübersicht, CSV-Export der Gesamtliste
-- **Erste-Schritte-Dialog** nach „Neue Planungsmappe": bietet Bezeichnungen,
-  Optionen-/Teilnehmer-Import und Beispieldaten direkt an (leichtgewichtiges
-  Gegenstück zum Desktop-Einrichtungsassistenten)
+- **Mehrstufiger Einrichtungsassistent** nach „Neue Planungsmappe": Willkommen
+  (mit Auswahl Assistent / sofort mit Standardwerten / bestehende Mappe öffnen)
+  → Bezeichnungen → Optionen-Import → Teilnehmer-Import, mit
+  Zurück/Weiter/Überspringen/Fertig — Gegenstück zum
+  `EinrichtungsassistentDialog` der Desktop-App
+- **Tabellen-Export-/Importassistent** („Tabellen-Assistent …"): führt in fünf
+  Schritten durch den Weg „Tabellen extern ausfüllen lassen" (einrichten →
+  exportieren → extern ausfüllen → reimportieren), öffnet an den passenden
+  Stellen die bestehenden Dialoge und exportiert im Exportschritt eine
+  **Wunschlisten-Vorlage** (wahlweise je Gruppe eine eigene Datei)
 
 ## Was (noch) fehlt
 
-- Mehrstufiger Einrichtungsassistent wie am Desktop (der Erste-Schritte-Dialog
-  deckt den Kern ab), Tabellen-Export-/Importassistent, Extra-Felder in den
-  Tabellen
+- Zusatzfelder erscheinen bisher in den Tabellen, im Import und im CSV-Export,
+  aber noch nicht in den gedruckten Gruppenlisten
+- Weitere Komfort-Randthemen des Desktop-Funktionsumfangs

@@ -23,6 +23,7 @@
     <button id="btn-speichern" disabled>Speichern</button>
     <button id="btn-speichern-als" disabled>Speichern als …</button>
     <button id="btn-labels" disabled>Bezeichnungen anpassen …</button>
+    <button id="btn-tabellen" disabled>Tabellen-Assistent …</button>
     <button id="btn-beispiel">Beispieldaten ausprobieren</button>
     <input type="file" id="datei-input" accept=".plf,.db,.sqlite" hidden>
     <input type="file" id="import-datei" accept=".csv,.txt,.xlsx,.xls,.ods" hidden>
@@ -211,6 +212,37 @@
       <option>4</option><option>5</option>
     </select>
   </div>
+
+  <details class="lbl-extras">
+    <summary>Zusatzfelder (optional)</summary>
+    <p class="hinweis">Benannte Zusatzfelder erscheinen als eigene Spalten in
+      den Tabellen, im Import und im CSV-Export. Leer lassen = ausgeblendet.</p>
+    <div class="formzeile">
+      <label for="lbl-tn-extra1">Zusatzfeld Teilnehmer/in 1</label>
+      <input type="text" id="lbl-tn-extra1" placeholder="z. B. E-Mail, Bemerkung">
+    </div>
+    <div class="formzeile">
+      <label for="lbl-tn-extra2">Zusatzfeld Teilnehmer/in 2</label>
+      <input type="text" id="lbl-tn-extra2">
+    </div>
+    <div class="formzeile">
+      <label for="lbl-tn-extra3">Zusatzfeld Teilnehmer/in 3</label>
+      <input type="text" id="lbl-tn-extra3">
+    </div>
+    <div class="formzeile">
+      <label for="lbl-opt-extra1">Zusatzfeld Option 1</label>
+      <input type="text" id="lbl-opt-extra1" placeholder="z. B. Material, Raumbedarf">
+    </div>
+    <div class="formzeile">
+      <label for="lbl-opt-extra2">Zusatzfeld Option 2</label>
+      <input type="text" id="lbl-opt-extra2">
+    </div>
+    <div class="formzeile">
+      <label for="lbl-opt-extra3">Zusatzfeld Option 3</label>
+      <input type="text" id="lbl-opt-extra3">
+    </div>
+  </details>
+
   <div class="dialog-buttons">
     <button class="sekundaer" id="lbl-abbrechen">Abbrechen</button>
     <button id="lbl-ok">Übernehmen</button>
@@ -223,22 +255,11 @@
 <!-- ── Dialog: Feldauswahl vor Druck (Inhalt dynamisch) ── -->
 <dialog id="dlg-spalten"></dialog>
 
-<!-- ── Dialog: Erste Schritte (nach "Neue Planungsmappe") ── -->
-<dialog id="dlg-start">
-  <h2>Neue Planungsmappe</h2>
-  <p class="hinweis">Diese Planungsmappe ist noch leer. Wie möchten Sie
-    beginnen? Alle Schritte sind jederzeit auch über die Werkzeugleiste und
-    die Tabs erreichbar.</p>
-  <div class="start-buttons">
-    <button id="start-labels">Bezeichnungen anpassen …</button>
-    <button id="start-optionen">Optionen importieren …</button>
-    <button id="start-teilnehmer">Teilnehmer/innen importieren …</button>
-    <button id="start-beispiel">Beispieldaten ausprobieren</button>
-  </div>
-  <div class="dialog-buttons">
-    <button class="sekundaer" id="start-los">Einfach loslegen</button>
-  </div>
-</dialog>
+<!-- ── Dialog: Einrichtungsassistent (Inhalt dynamisch, mehrstufig) ── -->
+<dialog id="dlg-start" class="assistent"></dialog>
+
+<!-- ── Dialog: Tabellen-Export-/Importassistent (Inhalt dynamisch) ── -->
+<dialog id="dlg-tabellen" class="assistent"></dialog>
 
 <!-- ── Druckbereich (nur in der Druckansicht sichtbar) ── -->
 <div id="druckbereich"></div>
