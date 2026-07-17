@@ -1,27 +1,30 @@
 /**
- * Export-Dialog für Listen — Web-Gegenstück zu FensterExportDialog +
- * SpaltenauswahlDialog(mit_kopfzeile) der Desktop-App: Format wählen
+ * Export-Dialog für Listen — Web-Gegenstück zu FensterExportDialog /
+ * GesamtExportDialog + SpaltenauswahlDialog der Desktop-App: Format wählen
  * (Excel/ODS/CSV/PDF), Kopfzeile (Titel) und „Datum in der Fußzeile"
- * festlegen, Spalten auswählen. Erzeugt die Datei und lädt sie herunter;
- * PDF läuft über den Browser-Druck (dort „Als PDF speichern").
+ * festlegen, Spalten auswählen. Erzeugt die Datei(en) und lädt sie herunter.
+ * PDF entsteht als echte Datei (jsPDF, pdf.js) — unabhängig vom Druckdialog.
  *
- * Nimmt Gruppen entgegen ([{titel, headers, rows}]) — für einfache Listen mit
- * genau einer Gruppe, für Gesamtlisten mit mehreren (je Option/Gruppe eine).
- * rows dürfen Arrays oder {klasse, zellen} sein (Nachbearbeitungs-Marker).
+ * Für Gesamtlisten (mehrere Gruppen) lassen sich zusätzlich wählen:
+ *  - „Seitenumbruch nach jeder Option/Gruppe" (im PDF)
+ *  - „Jede Option/Gruppe als eigene Datei" (eine Datei je Gruppe)
+ *
+ * Nimmt Gruppen entgegen ([{titel, headers, rows}]); rows dürfen Arrays oder
+ * {klasse, zellen} sein (Nachbearbeitungs-Marker).
  */
 
 import { alsCsv, downloadText } from "./csv.js";
 import { ladeSheetJs } from "./tabellendatei.js";
 import { filterGruppen } from "./spaltenwahl.js";
-import * as druck from "./druck.js";
+import { erzeugePdfBlob } from "./pdf.js";
 
 const $ = (id) => document.getElementById(id);
 
 const FORMATE = [
-  { key: "xlsx", label: "Excel-Datei (.xlsx)", ext: ".xlsx" },
-  { key: "ods",  label: "OpenDocument-Tabelle (.ods)", ext: ".ods" },
-  { key: "csv",  label: "CSV-Datei (.csv)", ext: ".csv" },
-  { key: "pdf",  label: "PDF (über den Druckdialog)", ext: ".pdf" },
+  { key: "xlsx", label: "Excel-Datei (.xlsx)" },
+  { key: "ods",  label: "OpenDocument-Tabelle (.ods)" },
+  { key: "csv",  label: "CSV-Datei (.csv)" },
+  { key: "pdf",  label: "PDF-Datei (.pdf)" },
 ];
 
 const zellenVon = (row) => (Array.isArray(row) ? row : row.zellen);
@@ -37,6 +40,15 @@ function sichererName(basis, ext) {
   return s + ext;
 }
 
+function ladeBlob(dateiname, blob) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = dateiname;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 /**
  * @param {object} o
  *   titel:            Kopfzeilen-Vorgabe / Fallback-Dateiname
@@ -44,11 +56,15 @@ function sichererName(basis, ext) {
  *   gruppen:          [{titel, headers, rows}] — mind. eine Gruppe
  *   kopfzeileVorgabe: Vorbelegung der Kopfzeile (Default: titel)
  *   datumVorgabe:     Datum-Fußzeile vorangehakt (Default: true)
+ *   gruppenoptionen:  bei true und >1 Gruppe: Seitenumbruch-/Separat-Optionen
+ *   einheit:          Bezeichnung je Gruppe für die Optionen (z. B. „Option")
  *   status:           optionale Statusausgabe
  */
 export function zeigeExportDialog({ titel, dateiBasis, gruppen, kopfzeileVorgabe,
-                                    datumVorgabe = true, status = () => {} }) {
+                                    datumVorgabe = true, gruppenoptionen = false,
+                                    einheit = "Gruppe", status = () => {} }) {
   const headers = gruppen[0]?.headers || [];
+  const mehrgruppig = gruppenoptionen && gruppen.length > 1;
   const dlg = $("dlg-export");
   dlg.innerHTML = "";
 
@@ -89,6 +105,31 @@ export function zeigeExportDialog({ titel, dateiBasis, gruppen, kopfzeileVorgabe
   datumCb.type = "checkbox"; datumCb.id = "export-datum"; datumCb.checked = !!datumVorgabe;
   datumZeile.append(datumCb, document.createTextNode(" Datum in der Fußzeile"));
   dlg.appendChild(datumZeile);
+
+  // ── Gesamtlisten-Optionen (nur bei mehreren Gruppen) ──
+  let umbruchCb = null;
+  let separatCb = null;
+  if (mehrgruppig) {
+    const gGroup = document.createElement("fieldset");
+    gGroup.className = "export-gruppe";
+    gGroup.innerHTML = `<legend>Je ${einheit}</legend>`;
+
+    const l1 = document.createElement("label");
+    l1.className = "export-check";
+    umbruchCb = document.createElement("input");
+    umbruchCb.type = "checkbox"; umbruchCb.id = "export-umbruch"; umbruchCb.checked = true;
+    l1.append(umbruchCb, document.createTextNode(` Seitenumbruch nach jeder ${einheit} (im PDF)`));
+    gGroup.appendChild(l1);
+
+    const l2 = document.createElement("label");
+    l2.className = "export-check";
+    separatCb = document.createElement("input");
+    separatCb.type = "checkbox"; separatCb.id = "export-separat";
+    l2.append(separatCb, document.createTextNode(` Jede ${einheit} als eigene Datei`));
+    gGroup.appendChild(l2);
+
+    dlg.appendChild(gGroup);
+  }
 
   // ── Spaltenauswahl ──
   const feldGruppe = document.createElement("fieldset");
@@ -132,13 +173,26 @@ export function zeigeExportDialog({ titel, dateiBasis, gruppen, kopfzeileVorgabe
     if (!kept.length) { alert("Bitte mindestens eine Spalte auswählen."); return; }
     const kopf = kzInput.value.trim();
     const mitDatum = datumCb.checked;
+    const seitenumbrueche = umbruchCb ? umbruchCb.checked : false;
+    const separat = separatCb ? separatCb.checked : false;
     const gefiltert = filterGruppen(gruppen, kept);
+    bOk.disabled = true;
     try {
-      await exportiere(fmt, dateiBasis || titel, kopf, mitDatum, gefiltert);
+      if (separat && gefiltert.length > 1) {
+        for (const g of gefiltert) {
+          const basis = `${dateiBasis || titel}_${g.titel}`;
+          await ausgeben(fmt, basis, kopf, mitDatum, false, [g]);
+        }
+        status(`${gefiltert.length} Dateien als ${fmt.toUpperCase()} exportiert.`);
+      } else {
+        await ausgeben(fmt, dateiBasis || titel, kopf, mitDatum, seitenumbrueche, gefiltert);
+        status(`Liste als ${fmt.toUpperCase()} exportiert.`);
+      }
       dlg.close();
-      status(`Liste als ${fmt.toUpperCase()} ${fmt === "pdf" ? "gedruckt" : "exportiert"}.`);
     } catch (e) {
       alert("Export fehlgeschlagen: " + e.message);
+    } finally {
+      bOk.disabled = false;
     }
   });
   btns.append(bAbbr, bOk);
@@ -147,7 +201,7 @@ export function zeigeExportDialog({ titel, dateiBasis, gruppen, kopfzeileVorgabe
   if (!dlg.open) dlg.showModal();
 }
 
-/** Baut die Zeilen (Array von Arrays) aus gefilterten Gruppen. */
+/** Zeilen (Array von Arrays) aus Gruppen — für CSV/xlsx/ods. */
 function baueZeilen(gruppen, kopfzeile, mitDatum) {
   const aoa = [];
   if (kopfzeile) aoa.push([kopfzeile]);
@@ -164,10 +218,11 @@ function baueZeilen(gruppen, kopfzeile, mitDatum) {
   return aoa;
 }
 
-async function exportiere(fmt, basis, kopfzeile, mitDatum, gruppen) {
+/** Erzeugt eine Ausgabedatei für die übergebenen (gefilterten) Gruppen. */
+async function ausgeben(fmt, basis, kopfzeile, mitDatum, seitenumbrueche, gruppen) {
   if (fmt === "pdf") {
-    // PDF über den Browser-Druck (dort „Als PDF speichern")
-    druck.drucke(kopfzeile || (gruppen[0]?.titel ?? "Liste"), gruppen);
+    const blob = await erzeugePdfBlob(gruppen, { kopfzeile, mitDatum, seitenumbrueche });
+    ladeBlob(sichererName(basis, ".pdf"), blob);
     return;
   }
   const aoa = baueZeilen(gruppen, kopfzeile, mitDatum);
@@ -175,7 +230,6 @@ async function exportiere(fmt, basis, kopfzeile, mitDatum, gruppen) {
     downloadText(sichererName(basis, ".csv"), alsCsv(aoa[0] || [], aoa.slice(1)));
     return;
   }
-  // xlsx / ods über SheetJS
   const XLSX = await ladeSheetJs();
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   const wb = XLSX.utils.book_new();
@@ -184,11 +238,5 @@ async function exportiere(fmt, basis, kopfzeile, mitDatum, gruppen) {
   const mime = fmt === "xlsx"
     ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     : "application/vnd.oasis.opendocument.spreadsheet";
-  const blob = new Blob([bin], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = sichererName(basis, fmt === "xlsx" ? ".xlsx" : ".ods");
-  a.click();
-  URL.revokeObjectURL(url);
+  ladeBlob(sichererName(basis, fmt === "xlsx" ? ".xlsx" : ".ods"), new Blob([bin], { type: mime }));
 }

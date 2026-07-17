@@ -1081,7 +1081,8 @@ function init() {
     if (!gruppen.length) { alert("Keine Daten vorhanden."); return; }
     zeigeExportDialog({
       titel: `Gesamtliste nach ${pluralDativ(k.projekt_label)}`,
-      dateiBasis: "gesamtliste_optionen", gruppen, status,
+      dateiBasis: "gesamtliste_optionen", gruppen,
+      gruppenoptionen: true, einheit: k.projekt_label, status,
     });
   });
   $("btn-druck-gruppen").addEventListener("click", () => {
@@ -1089,7 +1090,8 @@ function init() {
     if (!gruppen.length) { alert("Keine Daten vorhanden."); return; }
     zeigeExportDialog({
       titel: "Gesamtliste nach Gruppen",
-      dateiBasis: "gesamtliste_gruppen", gruppen, status,
+      dateiBasis: "gesamtliste_gruppen", gruppen,
+      gruppenoptionen: true, einheit: "Gruppe", status,
     });
   });
   $("btn-druck-einzeloption").addEventListener("click", () => {
