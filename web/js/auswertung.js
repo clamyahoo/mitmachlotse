@@ -158,7 +158,7 @@ export function zeigeWunschauswertung(nummer, rang = null) {
   for (let i = 1; i <= mw; i++) headers.push(`W${i}`);
   headers.push("Zuteilung", "Fixiert");
   const rows = treffer.map(({ t, rang: r }) => [
-    `${t.nachname}, ${t.vorname}`, gruppeText(t), `Wunsch ${r}`,
+    `${t.nachname}, ${t.vorname}`, gruppeText(t), `W${r}`,
     ...wuenscheVon(t).slice(0, mw),
     t.projekt ? `${t.projekt}: ${projekte[t.projekt]?.projektname ?? "?"}` : "–",
     t.fest_zugewiesen ? "✓" : "",
@@ -186,7 +186,7 @@ export function zeigeTeilnehmerliste(nummer) {
 
   const rangText = (t) => {
     const idx = wuenscheVon(t).indexOf(nummer);
-    return idx >= 0 ? `Wunsch ${idx + 1}` : "kein Wunsch";
+    return idx >= 0 ? `W${idx + 1}` : "kein Wunsch";
   };
   const headers = ["Name", k.stufe_label, "Wunschrang erhalten", "Fixiert"];
   const rows = tn.map((t) => [
@@ -215,7 +215,7 @@ export function zeigeAenderungsuebersicht() {
   const rows = liste.map((t) => {
     const wuensche = wuenscheVon(t).slice(0, k.max_wuensche).filter((w) => w !== 0);
     const idx = wuensche.indexOf(t.projekt);
-    const rang = !t.projekt ? "–" : idx >= 0 ? `Wunsch ${idx + 1}` : "kein Wunsch";
+    const rang = !t.projekt ? "–" : idx >= 0 ? `W${idx + 1}` : "kein Wunsch";
     const zusatz = t.stufenzusatz && t.stufenzusatz !== "-" ? t.stufenzusatz : "";
     return [`${t.nachname}, ${t.vorname}`, t.stufe, zusatz,
             nameVon(t.projekt_baseline), nameVon(t.projekt), rang];
