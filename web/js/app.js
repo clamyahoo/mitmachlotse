@@ -22,6 +22,7 @@ import * as auswertung from "./auswertung.js";
 import { liesTabellenDatei } from "./tabellendatei.js";
 import { initRaumplan, renderRaumplan } from "./raumplan.js";
 import { waehleSpalten, filterGruppen } from "./spaltenwahl.js";
+import { zeigeExportDialog } from "./exportdialog.js";
 import { mergeTabellen } from "./importcsv.js";
 import { initAssistenten, zeigeEinrichtungsassistent, zeigeTabellenassistent }
   from "./assistenten.js";
@@ -51,7 +52,7 @@ function aktualisiereKopf() {
   const offen = db.istOffen();
   for (const id of ["btn-speichern", "btn-speichern-als", "btn-tn-neu",
                     "btn-tn-loeschen", "btn-opt-neu", "btn-opt-loeschen",
-                    "btn-csv-gesamt", "btn-zuteilung-aufheben",
+                    "btn-zuteilung-aufheben",
                     "btn-labels", "btn-tabellen", "btn-tn-import", "btn-opt-import",
                     "btn-quali", "btn-quali-export", "btn-druck-optionen",
                     "btn-druck-gruppen", "btn-druck-einzeloption",
@@ -633,22 +634,6 @@ async function oeffneDatei(file) {
   }
 }
 
-function exportGesamtCsv() {
-  const k = db.getFeldkonfig();
-  const tnExtras = aktiveExtras(k, "extra");
-  const projekte = Object.fromEntries(db.getAlleProjekte().map((p) => [p.nummer, p]));
-  const headers = ["Name", k.stufe_label, k.stufenzusatz_label,
-                   ...tnExtras.map((e) => e.label),
-                   `${k.projekt_label}-Nr.`, k.projekt_label];
-  const rows = db.getAlleTeilnehmer().map((t) => [
-    `${t.nachname}, ${t.vorname}`, t.stufe, t.stufenzusatz,
-    ...tnExtras.map((e) => t[e.key] || ""),
-    t.projekt || 0, t.projekt ? (projekte[t.projekt]?.projektname ?? "?") : "",
-  ]);
-  downloadText("gesamtliste.csv", alsCsv(headers, rows));
-  status("Gesamtliste als CSV exportiert.");
-}
-
 /** Wunschlisten-Vorlage zum externen Ausfüllen (Tabellen-Assistent, Schritt 3):
  *  Grunddaten + Wunschspalten (aktuelle Werte, meist leer). proGruppe = true →
  *  je Gruppe (Stufe+Zusatz) eine eigene Datei. Gibt die Dateianzahl zurück. */
@@ -943,8 +928,12 @@ function exportQualitaet() {
   const eintraege = gefilterteQuali();
   const headers = ["Kategorie", "Name", "Gruppe", "Details"];
   const rows = eintraege.map((e) => [e.kategorie, e.name, e.gruppe, e.details]);
-  downloadText("qualitaetspruefung.csv", alsCsv(headers, rows));
-  status(`Qualitätsprüfung als CSV exportiert (${rows.length} Einträge).`);
+  zeigeExportDialog({
+    titel: "Qualitätsprüfung Wunscheingaben",
+    dateiBasis: "qualitaetspruefung",
+    gruppen: [{ titel: "Qualitätsprüfung Wunscheingaben", headers, rows }],
+    status,
+  });
 }
 
 // ── Verkabelung ──────────────────────────────────────────────────────────────
@@ -1003,9 +992,7 @@ function init() {
     status("Automatische Zuweisungen aufgehoben (fixierte bleiben).");
   });
 
-  $("btn-csv-gesamt").addEventListener("click", exportGesamtCsv);
-
-  // Bezeichnungen-Dialog
+  // Spaltenbezeichnungen-Dialog
   $("btn-labels").addEventListener("click", zeigeLabelsDialog);
   $("lbl-ok").addEventListener("click", speichereLabels);
   $("lbl-abbrechen").addEventListener("click", () => $("dlg-labels").close());
@@ -1081,13 +1068,23 @@ function init() {
     if (!kept) return;
     druck.drucke(titel, filterGruppen(gruppen, kept));
   };
+  // Gesamtlisten führen zum Export-Dialog (alle Formate inkl. PDF/Druck)
   $("btn-druck-optionen").addEventListener("click", () => {
     const k = db.getFeldkonfig();
-    druckeMitAuswahl(`Gesamtliste nach ${pluralDativ(k.projekt_label)}`,
-                     druck.gesamtNachOptionen());
+    const gruppen = druck.gesamtNachOptionen();
+    if (!gruppen.length) { alert("Keine Daten vorhanden."); return; }
+    zeigeExportDialog({
+      titel: `Gesamtliste nach ${pluralDativ(k.projekt_label)}`,
+      dateiBasis: "gesamtliste_optionen", gruppen, status,
+    });
   });
   $("btn-druck-gruppen").addEventListener("click", () => {
-    druckeMitAuswahl("Gesamtliste nach Gruppen", druck.gesamtNachGruppen());
+    const gruppen = druck.gesamtNachGruppen();
+    if (!gruppen.length) { alert("Keine Daten vorhanden."); return; }
+    zeigeExportDialog({
+      titel: "Gesamtliste nach Gruppen",
+      dateiBasis: "gesamtliste_gruppen", gruppen, status,
+    });
   });
   $("btn-druck-einzeloption").addEventListener("click", () => {
     const nr = parseInt($("druck-option-select").value, 10);

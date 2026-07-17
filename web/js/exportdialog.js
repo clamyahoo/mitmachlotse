@@ -1,13 +1,19 @@
 /**
- * Export-Dialog für Listenfenster — Web-Gegenstück zu FensterExportDialog +
+ * Export-Dialog für Listen — Web-Gegenstück zu FensterExportDialog +
  * SpaltenauswahlDialog(mit_kopfzeile) der Desktop-App: Format wählen
- * (CSV/Excel/ODS), Kopfzeile (Titel) und „Datum in der Fußzeile" festlegen,
- * anschließend die auszugebenden Spalten auswählen. Erzeugt die Datei und
- * lädt sie herunter. xlsx/ods über SheetJS (lazy vom CDN).
+ * (Excel/ODS/CSV/PDF), Kopfzeile (Titel) und „Datum in der Fußzeile"
+ * festlegen, Spalten auswählen. Erzeugt die Datei und lädt sie herunter;
+ * PDF läuft über den Browser-Druck (dort „Als PDF speichern").
+ *
+ * Nimmt Gruppen entgegen ([{titel, headers, rows}]) — für einfache Listen mit
+ * genau einer Gruppe, für Gesamtlisten mit mehreren (je Option/Gruppe eine).
+ * rows dürfen Arrays oder {klasse, zellen} sein (Nachbearbeitungs-Marker).
  */
 
 import { alsCsv, downloadText } from "./csv.js";
 import { ladeSheetJs } from "./tabellendatei.js";
+import { filterGruppen } from "./spaltenwahl.js";
+import * as druck from "./druck.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -15,7 +21,10 @@ const FORMATE = [
   { key: "xlsx", label: "Excel-Datei (.xlsx)", ext: ".xlsx" },
   { key: "ods",  label: "OpenDocument-Tabelle (.ods)", ext: ".ods" },
   { key: "csv",  label: "CSV-Datei (.csv)", ext: ".csv" },
+  { key: "pdf",  label: "PDF (über den Druckdialog)", ext: ".pdf" },
 ];
+
+const zellenVon = (row) => (Array.isArray(row) ? row : row.zellen);
 
 function datumsText() {
   return new Date().toLocaleDateString("de-DE",
@@ -29,11 +38,17 @@ function sichererName(basis, ext) {
 }
 
 /**
- * Öffnet den Export-Dialog. titel = Kopfzeilen-Vorgabe (lesbar), dateiBasis =
- * Vorschlag für den Dateinamen, status: optionale Statusausgabe.
- * headers/rows: die vollständige Liste (Spaltenauswahl passiert im Dialog).
+ * @param {object} o
+ *   titel:            Kopfzeilen-Vorgabe / Fallback-Dateiname
+ *   dateiBasis:       Vorschlag für den Dateinamen (ohne Endung)
+ *   gruppen:          [{titel, headers, rows}] — mind. eine Gruppe
+ *   kopfzeileVorgabe: Vorbelegung der Kopfzeile (Default: titel)
+ *   datumVorgabe:     Datum-Fußzeile vorangehakt (Default: true)
+ *   status:           optionale Statusausgabe
  */
-export function zeigeExportDialog(titel, dateiBasis, headers, rows, status = () => {}) {
+export function zeigeExportDialog({ titel, dateiBasis, gruppen, kopfzeileVorgabe,
+                                    datumVorgabe = true, status = () => {} }) {
+  const headers = gruppen[0]?.headers || [];
   const dlg = $("dlg-export");
   dlg.innerHTML = "";
 
@@ -56,21 +71,22 @@ export function zeigeExportDialog(titel, dateiBasis, headers, rows, status = () 
   }
   dlg.appendChild(fmtGroup);
 
-  // ── Kopfzeile + Datum ──
+  // ── Kopfzeile (Titel) — Block-Layout, damit nichts abgeschnitten wird ──
   const kz = document.createElement("div");
-  kz.className = "formzeile";
+  kz.className = "export-kopf";
   const kzLabel = document.createElement("label");
   kzLabel.textContent = "Kopfzeile (Titel)";
   kzLabel.htmlFor = "export-kopfzeile";
   const kzInput = document.createElement("input");
-  kzInput.type = "text"; kzInput.id = "export-kopfzeile"; kzInput.value = titel || "";
+  kzInput.type = "text"; kzInput.id = "export-kopfzeile";
+  kzInput.value = kopfzeileVorgabe !== undefined ? kopfzeileVorgabe : (titel || "");
   kz.append(kzLabel, kzInput);
   dlg.appendChild(kz);
 
   const datumZeile = document.createElement("label");
   datumZeile.className = "export-check";
   const datumCb = document.createElement("input");
-  datumCb.type = "checkbox"; datumCb.id = "export-datum"; datumCb.checked = true;
+  datumCb.type = "checkbox"; datumCb.id = "export-datum"; datumCb.checked = !!datumVorgabe;
   datumZeile.append(datumCb, document.createTextNode(" Datum in der Fußzeile"));
   dlg.appendChild(datumZeile);
 
@@ -116,12 +132,11 @@ export function zeigeExportDialog(titel, dateiBasis, headers, rows, status = () 
     if (!kept.length) { alert("Bitte mindestens eine Spalte auswählen."); return; }
     const kopf = kzInput.value.trim();
     const mitDatum = datumCb.checked;
-    const hSel = kept.map((i) => headers[i]);
-    const rSel = rows.map((r) => kept.map((i) => r[i]));
+    const gefiltert = filterGruppen(gruppen, kept);
     try {
-      await exportiere(fmt, dateiBasis || titel, kopf, mitDatum, hSel, rSel);
+      await exportiere(fmt, dateiBasis || titel, kopf, mitDatum, gefiltert);
       dlg.close();
-      status(`Liste als ${fmt.toUpperCase()} exportiert.`);
+      status(`Liste als ${fmt.toUpperCase()} ${fmt === "pdf" ? "gedruckt" : "exportiert"}.`);
     } catch (e) {
       alert("Export fehlgeschlagen: " + e.message);
     }
@@ -132,24 +147,36 @@ export function zeigeExportDialog(titel, dateiBasis, headers, rows, status = () 
   if (!dlg.open) dlg.showModal();
 }
 
-async function exportiere(fmt, titel, kopfzeile, mitDatum, headers, rows) {
+/** Baut die Zeilen (Array von Arrays) aus gefilterten Gruppen. */
+function baueZeilen(gruppen, kopfzeile, mitDatum) {
+  const aoa = [];
+  if (kopfzeile) aoa.push([kopfzeile]);
+  const mehrere = gruppen.length > 1;
+  gruppen.forEach((g, gi) => {
+    if (mehrere) {
+      if (gi > 0 || kopfzeile) aoa.push([]);
+      aoa.push([g.titel]);
+    }
+    aoa.push(g.headers);
+    for (const row of g.rows) aoa.push(zellenVon(row));
+  });
+  if (mitDatum) { aoa.push([]); aoa.push([`Stand: ${datumsText()}`]); }
+  return aoa;
+}
+
+async function exportiere(fmt, basis, kopfzeile, mitDatum, gruppen) {
+  if (fmt === "pdf") {
+    // PDF über den Browser-Druck (dort „Als PDF speichern")
+    druck.drucke(kopfzeile || (gruppen[0]?.titel ?? "Liste"), gruppen);
+    return;
+  }
+  const aoa = baueZeilen(gruppen, kopfzeile, mitDatum);
   if (fmt === "csv") {
-    const zeilen = [];
-    if (kopfzeile) zeilen.push([kopfzeile]);
-    zeilen.push(headers);
-    for (const r of rows) zeilen.push(r);
-    if (mitDatum) { zeilen.push([]); zeilen.push([`Stand: ${datumsText()}`]); }
-    // alsCsv nimmt (kopf, rows) — erste Zeile als „Kopf", Rest als Datenzeilen.
-    downloadText(sichererName(titel, ".csv"), alsCsv(zeilen[0], zeilen.slice(1)));
+    downloadText(sichererName(basis, ".csv"), alsCsv(aoa[0] || [], aoa.slice(1)));
     return;
   }
   // xlsx / ods über SheetJS
   const XLSX = await ladeSheetJs();
-  const aoa = [];
-  if (kopfzeile) aoa.push([kopfzeile]);
-  aoa.push(headers);
-  for (const r of rows) aoa.push(r);
-  if (mitDatum) { aoa.push([]); aoa.push([`Stand: ${datumsText()}`]); }
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Liste");
@@ -161,7 +188,7 @@ async function exportiere(fmt, titel, kopfzeile, mitDatum, headers, rows) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = sichererName(titel, fmt === "xlsx" ? ".xlsx" : ".ods");
+  a.download = sichererName(basis, fmt === "xlsx" ? ".xlsx" : ".ods");
   a.click();
   URL.revokeObjectURL(url);
 }

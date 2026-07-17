@@ -117,10 +117,11 @@ function zeigeListenfenster({ titel, headers, rows, rowIds = null, dateiBasis, r
   }
 
   const bExport = document.createElement("button");
-  bExport.textContent = "Exportieren";
+  bExport.textContent = "Export";
   bExport.disabled = !rows.length;
   bExport.addEventListener("click", () =>
-    zeigeExportDialog(titel, dateiBasis, headers, rows, statusCb));
+    zeigeExportDialog({ titel, dateiBasis, gruppen: [{ titel, headers, rows }],
+                        status: statusCb }));
 
   const bDruck = document.createElement("button");
   bDruck.textContent = "Drucken";

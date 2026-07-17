@@ -393,6 +393,17 @@ tr.klickbar:hover td { background: #eef4fb; }
   gap: 6px;
   padding: 3px 0;
 }
+/* Kopfzeile als Block (Label über Eingabefeld), Feld volle Breite ohne
+   Überlauf — behebt das Abschneiden im Export-Dialog. */
+.export-kopf { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; }
+.export-kopf input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #bbb;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font: inherit;
+}
 
 /* Wunschdetail- und Listenfenster */
 .detailfenster { max-width: 640px; }

@@ -73,7 +73,7 @@
         <button id="btn-raum-neu" disabled>+ Raum</button>
         <button id="btn-raum-loeschen" disabled>✗ Markierte löschen</button>
         <button id="btn-raum-import" disabled>Importieren …</button>
-        <button id="btn-raum-export" disabled>Exportieren (CSV)</button>
+        <button id="btn-raum-export" disabled>Export</button>
         <span id="raum-anzahl" class="anzahl"></span>
       </div>
       <div class="tabellen-scroll resizable">
@@ -127,8 +127,10 @@
       <p class="hinweis">Klick auf eine Zeile öffnet die <b>Wunschdetails</b>:
         wie oft die Option je Wunschrang gewünscht wurde, mit welchem Rang die
         Zugeteilten sie bekommen haben, samt Wunschauswertungs- und
-        Teilnehmerliste (je als CSV exportierbar).</p>
-      <table id="uebersicht-tabelle" class="kompakt"><thead></thead><tbody></tbody></table>
+        Teilnehmerliste (je exportierbar). Rahmenhöhe unten rechts verstellbar.</p>
+      <div class="tabellen-scroll resizable">
+        <table id="uebersicht-tabelle" class="kompakt"><thead></thead><tbody></tbody></table>
+      </div>
     </div>
 
     <div class="karte">
@@ -164,7 +166,7 @@
             <option value="mehrfach">↻ Mehrfach</option>
           </select>
         </label>
-        <button id="btn-quali-export" disabled>Als CSV</button>
+        <button id="btn-quali-export" disabled>Export</button>
         <span id="quali-zusammenfassung" class="anzahl"></span>
       </div>
       <details id="quali-details" class="einklappbar" open>
@@ -176,11 +178,13 @@
     </div>
 
     <div class="karte">
-      <h2>Listen &amp; Druck</h2>
-      <p class="hinweis">Öffnet die Druckansicht des Browsers. Als Ziel bieten
-        praktisch alle aktuellen Browser (Chrome, Edge, Firefox, Safari)
-        <b>„Als PDF speichern"</b> an — bei Firefox/Safari im Ziel- bzw.
-        PDF-Menü. Vor jedem Druck erscheint die Feldauswahl.</p>
+      <h2>Listenexport und Druck</h2>
+      <p class="hinweis">Die Gesamtlisten führen zum <b>Export-Dialog</b>
+        (Excel&nbsp;.xlsx, OpenDocument&nbsp;.ods, CSV oder PDF, dazu Titel,
+        Fußzeilendatum und Spaltenauswahl). „PDF" öffnet die Druckansicht des
+        Browsers; dort bieten praktisch alle aktuellen Browser (Chrome, Edge,
+        Firefox, Safari) <b>„Als PDF speichern"</b>. Die Einzellisten gehen
+        direkt in den Druck (mit Feldauswahl).</p>
       <div class="aktionszeile">
         <button id="btn-druck-optionen" disabled>Gesamtliste nach Optionen</button>
         <button id="btn-druck-gruppen" disabled>Gesamtliste nach Gruppen</button>
@@ -192,13 +196,6 @@
       <div class="aktionszeile">
         <select id="druck-gruppe-select" disabled></select>
         <button id="btn-druck-einzelgruppe" disabled>Gruppenliste (Gruppe) drucken</button>
-      </div>
-    </div>
-
-    <div class="karte">
-      <h2>Export</h2>
-      <div class="aktionszeile">
-        <button id="btn-csv-gesamt" disabled>Gesamtliste als CSV</button>
       </div>
     </div>
   </section>

@@ -19,6 +19,7 @@ import * as druck from "./druck.js";
 import { Kontext } from "./kontext.js";
 import { alsCsv, downloadText } from "./csv.js";
 import { waehleSpalten, filterGruppen } from "./spaltenwahl.js";
+import { zeigeExportDialog } from "./exportdialog.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -341,8 +342,22 @@ export function initRaumplan(callbacks) {
   });
   $("btn-raum-druck").addEventListener("click", druckeRaumplan);
   $("btn-raum-export").addEventListener("click", () => {
-    downloadText("raumliste.csv", raumlisteAlsCsv());
-    cb.status("Raumliste als CSV exportiert.");
+    const raeume = db.getAlleRaeume();
+    if (!raeume.length) { alert("Keine Räume vorhanden."); return; }
+    // Kopfzeile/Datum standardmäßig aus, damit ein CSV-Export ohne Zusatz-
+    // zeilen bleibt und sich sauber wieder importieren lässt (Round-Trip).
+    zeigeExportDialog({
+      titel: "Raumliste",
+      dateiBasis: "raumliste",
+      kopfzeileVorgabe: "",
+      datumVorgabe: false,
+      gruppen: [{
+        titel: "Raumliste",
+        headers: ["Raumname", "Kapazität", "Beschreibung"],
+        rows: raeume.map((r) => [r.name, r.kapazitaet, r.beschreibung]),
+      }],
+      status: cb.status,
+    });
   });
   // btn-raum-import wird in app.js verdrahtet (dort lebt der Datei-Input).
 }
