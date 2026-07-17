@@ -477,12 +477,17 @@ export function deleteRaeume(ids) {
 export function getRaumplan() {
   return query(`
     SELECT p.nummer, p.projektname, p.leitung, p.tnmax,
-           p.raum_id, p.zeit, p.raum_fixiert,
+           p.raum_id, p.zeit, p.raum_fixiert, p.raumzuordnung_extra,
            r.name AS raum_name, r.kapazitaet AS raum_kapazitaet,
            (SELECT COUNT(*) FROM teilnehmer t WHERE t.projekt = p.nummer) AS belegt
     FROM projekte p
     LEFT JOIN raeume r ON r.id = p.raum_id
     ORDER BY p.nummer`);
+}
+
+export function setRaumzuordnungExtra(nummer, wert) {
+  run("UPDATE projekte SET raumzuordnung_extra = ? WHERE nummer = ?",
+      [wert, nummer]);
 }
 
 export function setRaumZeit(nummer, raumId, zeit) {

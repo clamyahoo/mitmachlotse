@@ -147,10 +147,10 @@ export function zeigeEinrichtungsassistent() {
         wahl.className = "assi-wahl";
         for (const [wert, titel, text] of [
           ["assistent", "Mit dem Assistenten einrichten",
-           "Schritt für Schritt: Bezeichnungen anpassen, Optionen und " +
+           "Schritt für Schritt: Spaltenbezeichnungen anpassen, Optionen und " +
            "Teilnehmer/innen importieren."],
           ["standard", "Mit Standardbezeichnungen sofort beginnen",
-           'Alles lässt sich später über „Bezeichnungen anpassen" ändern.'],
+           'Alles lässt sich später über „Spaltenbezeichnungen anpassen" ändern.'],
           ["laden", "Bestehende Planungsmappe öffnen",
            "Eine vorhandene .plf-/.db-Datei laden und damit weiterarbeiten."],
         ]) {
@@ -176,12 +176,12 @@ export function zeigeEinrichtungsassistent() {
     { // Seite 1: Bezeichnungen
       optional: true,
       bauen(body, steuerung) {
-        body.appendChild(absatz("<b>Schritt 1 von 3 – Bezeichnungen</b>"));
+        body.appendChild(absatz("<b>Schritt 1 von 3 – Spaltenbezeichnungen</b>"));
         body.appendChild(absatz(
           'Passen Sie Begriffe wie „Option", „Gruppenbereich" oder die Anzahl ' +
           "der Wunschränge an Ihren Anwendungsfall an. Später jederzeit über " +
-          '„Bezeichnungen anpassen" änderbar.', "hinweis"));
-        body.appendChild(knopf("Bezeichnungen konfigurieren …", () => {
+          '„Spaltenbezeichnungen anpassen" änderbar.', "hinweis"));
+        body.appendChild(knopf("Spaltenbezeichnungen konfigurieren …", () => {
           api.zeigeLabelsDialog(() => {
             zustand.bezeichnungen = true;
             steuerung.aktualisieren();
@@ -274,7 +274,7 @@ export function zeigeTabellenassistent() {
           "nur so ist später prüfbar, ob ein Wunsch zulässig ist.<br>" +
           `&#8226; <b>Grunddaten der Teilnehmer/innen</b> (Name, ${sl}) sind erfasst; ` +
           "die Wunschspalten dürfen noch leer sein.", "hinweis"));
-        body.appendChild(knopf("Bezeichnungen anpassen …",
+        body.appendChild(knopf("Spaltenbezeichnungen anpassen …",
           () => api.zeigeLabelsDialog(() => {})));
       },
     },

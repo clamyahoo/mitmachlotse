@@ -159,9 +159,12 @@ function renderRaumliste() {
 
 function renderZuordnung() {
   const k = db.getFeldkonfig();
-  kopf($("raumplan-tabelle").querySelector("thead"),
-    ["Nr.", db.labelFormen(k.projekt_label).name, "Plätze max", "belegt",
-     "Raum", "Kapazität", "Zeit", "Fix", "Hinweis"]);
+  const rzl = (k.raumzuordnung_extra_label || "").trim();  // leer = Spalte aus
+  const spalten = ["Nr.", db.labelFormen(k.projekt_label).name, "Plätze max",
+                   "belegt", "Raum", "Kapazität", "Zeit"];
+  if (rzl) spalten.push(rzl);
+  spalten.push("Fix", "Hinweis");
+  kopf($("raumplan-tabelle").querySelector("thead"), spalten);
   const tbody = $("raumplan-tabelle").querySelector("tbody");
   tbody.innerHTML = "";
   const darf = Kontext.darfOptionenBearbeiten();
@@ -222,6 +225,14 @@ function renderZuordnung() {
       cb.setzeDirty(true);
       renderZuordnung();
     }, !darf));
+
+    // Optionales Raumzuordnungs-Zusatzfeld (nur wenn benannt)
+    if (rzl) {
+      tr.appendChild(inputZelle("text", row.raumzuordnung_extra || "", (inp) => {
+        db.setRaumzuordnungExtra(row.nummer, inp.value);
+        cb.setzeDirty(true);
+      }, !darf));
+    }
 
     // Fix
     const tdFix = document.createElement("td");

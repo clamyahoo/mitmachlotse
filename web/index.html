@@ -22,9 +22,9 @@
     <button id="btn-oeffnen">Öffnen (.plf)</button>
     <button id="btn-speichern" disabled>Speichern</button>
     <button id="btn-speichern-als" disabled>Speichern als …</button>
-    <button id="btn-labels" disabled>Bezeichnungen anpassen …</button>
+    <button id="btn-labels" disabled>Spaltenbezeichnungen anpassen …</button>
     <button id="btn-tabellen" disabled>Tabellen-Assistent …</button>
-    <button id="btn-beispiel">Beispieldaten ausprobieren</button>
+    <button id="btn-beispiel">Beispieldaten ausprobieren …</button>
     <input type="file" id="datei-input" accept=".plf,.db,.sqlite" hidden>
     <input type="file" id="import-datei" accept=".csv,.txt,.xlsx,.xls,.ods" hidden>
   </div>
@@ -76,7 +76,7 @@
         <button id="btn-raum-export" disabled>Exportieren (CSV)</button>
         <span id="raum-anzahl" class="anzahl"></span>
       </div>
-      <div class="tabellen-scroll">
+      <div class="tabellen-scroll resizable">
         <table id="raum-tabelle"><thead></thead><tbody></tbody></table>
       </div>
     </div>
@@ -95,7 +95,7 @@
         <button id="btn-raum-druck" disabled>Raumplan drucken</button>
       </div>
       <div id="raum-solver-status" class="solver-status" hidden></div>
-      <div class="tabellen-scroll">
+      <div class="tabellen-scroll resizable">
         <table id="raumplan-tabelle"><thead></thead><tbody></tbody></table>
       </div>
     </div>
@@ -206,9 +206,9 @@
 
 <footer><span id="status">Bereit.</span></footer>
 
-<!-- ── Dialog: Bezeichnungen anpassen ── -->
+<!-- ── Dialog: Spaltenbezeichnungen anpassen ── -->
 <dialog id="dlg-labels">
-  <h2>Bezeichnungen anpassen</h2>
+  <h2>Spaltenbezeichnungen anpassen</h2>
   <p class="hinweis">Die Begriffe erscheinen überall in der Oberfläche, in
     Listen und Ausdrucken — z.&nbsp;B. „Option", „Projekt", „Kurs" oder
     „Workshop". Sie werden in der Planungsmappe gespeichert und gelten auch
@@ -265,6 +265,10 @@
       <label for="lbl-opt-extra3">Zusatzfeld Option 3</label>
       <input type="text" id="lbl-opt-extra3">
     </div>
+    <div class="formzeile">
+      <label for="lbl-raumzuordnung">Zusatzfeld Raumzuordnung</label>
+      <input type="text" id="lbl-raumzuordnung" placeholder="z. B. Etage, Gebäude, Ausstattung">
+    </div>
   </details>
 
   <div class="dialog-buttons">
@@ -290,6 +294,34 @@
 
 <!-- ── Dialog: Listenfenster (Wunschauswertung/Teilnehmerliste, dynamisch) ── -->
 <dialog id="dlg-liste" class="detailfenster"></dialog>
+
+<!-- ── Dialog: Beispieldaten auswählen ── -->
+<dialog id="dlg-beispiel">
+  <h2>Beispieldaten ausprobieren</h2>
+  <p class="hinweis">Zum Kennenlernen — nichts davon verändert eigene Dateien.
+    Die Planungsmappe ist fertig ausgefüllt; die Listen führen durch den
+    normalen Import (mit Spaltenzuordnung).</p>
+  <div class="start-buttons">
+    <button id="bsp-mappe">Beispiel-Planungsmappe laden (fertig ausgefüllt)</button>
+    <button id="bsp-optionen">Beispiel-Optionsliste importieren (.ods)</button>
+    <button id="bsp-teilnehmer">Beispiel-Teilnehmerliste importieren (.xlsx)</button>
+  </div>
+  <div class="dialog-buttons">
+    <button class="sekundaer" id="bsp-schliessen">Schließen</button>
+  </div>
+</dialog>
+
+<!-- ── Dialog: Hinweis (Warnung, z. B. unzulässiger Wunsch) ── -->
+<dialog id="dlg-hinweis">
+  <div class="hinweis-kopf">
+    <span class="hinweis-icon">⚠</span>
+    <h2 id="hinweis-titel">Hinweis</h2>
+  </div>
+  <p id="hinweis-text"></p>
+  <div class="dialog-buttons">
+    <button id="hinweis-ok">OK</button>
+  </div>
+</dialog>
 
 <!-- ── Druckbereich (nur in der Druckansicht sichtbar) ── -->
 <div id="druckbereich"></div>

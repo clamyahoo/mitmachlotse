@@ -252,6 +252,31 @@ button.sekundaer:hover:not(:disabled) { background: #95a5a6; }
 /* Qualitätsprüfung */
 #quali-tabelle td.icon { width: 2em; text-align: center; }
 
+/* Beispieldaten-Auswahl (und andere gestapelte Buttonlisten) */
+.start-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0;
+}
+.start-buttons button { text-align: left; }
+
+/* Hinweis-Popup (Warnung, z. B. unzulässiger Wunsch) */
+#dlg-hinweis { max-width: 460px; }
+.hinweis-kopf { display: flex; align-items: center; gap: 10px; }
+.hinweis-kopf h2 { margin: 0; }
+.hinweis-icon { font-size: 26px; }
+#hinweis-text { white-space: pre-line; line-height: 1.5; margin: 12px 0; }
+
+/* Vergrößerbare Tabellenrahmen (Raumliste + Raumzuordnung): Anfasser unten
+   rechts zum Hoch-/Runterziehen des unteren Rands. */
+.tabellen-scroll.resizable {
+  resize: vertical;
+  overflow: auto;
+  min-height: 120px;
+  height: 260px;
+}
+
 /* Mehrstufige Assistenten (Einrichtung + Tabellen-Workflow) */
 .assistent { max-width: 620px; }
 .assi-schritt {

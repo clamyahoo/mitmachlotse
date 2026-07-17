@@ -300,6 +300,7 @@ function renderTeilnehmer() {
         const r = wunschZulaessig(t.stufe, wert, projekteDict, k);
         td.classList.toggle("wunsch-unzulaessig", !r.ok);
         input.title = r.ok ? "" : "⚠ " + r.grund;
+        return r;
       };
       markiere(t[feld]);
       input.addEventListener("change", () => {
@@ -307,7 +308,10 @@ function renderTeilnehmer() {
         db.updateTeilnehmerFeld(t.id, feld, wert);
         t[feld] = wert;
         setzeDirty(true);
-        markiere(wert);
+        const r = markiere(wert);
+        // Popup zusätzlich zur roten Markierung (wie am Desktop), aber nur bei
+        // aktiver Neueingabe eines unzulässigen Wunsches.
+        if (!r.ok) zeigeUnzulaessigHinweis(i, r.grund);
       });
       td.appendChild(input);
       tr.appendChild(td);
@@ -669,6 +673,7 @@ function zeigeLabelsDialog(onClose) {
     $(`lbl-tn-extra${i}`).value = k[`extra_${i}_label`] || "";
     $(`lbl-opt-extra${i}`).value = k[`projekt_extra_${i}_label`] || "";
   }
+  $("lbl-raumzuordnung").value = k.raumzuordnung_extra_label || "";
   // Assistenten können auf das Schließen reagieren (Statuszeile aktualisieren).
   if (typeof onClose === "function") {
     $("dlg-labels").addEventListener("close", () => onClose(), { once: true });
@@ -701,11 +706,12 @@ function speichereLabels() {
     projekt_extra_1_label: $("lbl-opt-extra1").value.trim(),
     projekt_extra_2_label: $("lbl-opt-extra2").value.trim(),
     projekt_extra_3_label: $("lbl-opt-extra3").value.trim(),
+    raumzuordnung_extra_label: $("lbl-raumzuordnung").value.trim(),
   });
   $("dlg-labels").close();
   setzeDirty(true);
   renderAlles();
-  status("Bezeichnungen übernommen — sie gelten auch in der Desktop-App.");
+  status("Spaltenbezeichnungen übernommen — sie gelten auch in der Desktop-App.");
 }
 
 // ── Beispieldaten ────────────────────────────────────────────────────────────
@@ -726,6 +732,47 @@ async function ladeBeispieldaten() {
     alert("Beispieldaten konnten nicht geladen werden: " + e.message);
     status("Bereit.");
   }
+}
+
+/** Beispiel-Options-/Teilnehmerliste über den normalen Import-Dialog einspielen
+ *  (mit Spaltenzuordnung) — Web-Gegenstück zu den Desktop-Menüpunkten
+ *  „Beispiel-Optionsliste/-Teilnehmerliste importieren". */
+async function importiereBeispielDatei(art, pfad, dateiTitel) {
+  try {
+    if (!db.istOffen()) {
+      await db.neueMappe();
+      dateiname = "planungsmappe.plf";
+      dateiHandle = null;
+      setzeDirty(false);
+      renderAlles();
+    }
+    status("Lade Beispieldatei …");
+    const resp = await fetch(pfad);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const blob = await resp.blob();
+    const file = new File([blob], dateiTitel);
+    const text = await liesTabellenDatei(file, status);
+    oeffneImportDialog(art, text, (anzahl) => {
+      setzeDirty(true);
+      renderAlles();
+      status(`${anzahl} Datensätze aus der Beispieldatei importiert (${dateiTitel}).`);
+    });
+  } catch (e) {
+    alert("Beispieldatei konnte nicht geladen werden: " + e.message);
+    status("Bereit.");
+  }
+}
+
+// ── Hinweis-Popup (z. B. unzulässiger Wunsch) ────────────────────────────────
+function zeigeUnzulaessigHinweis(rang, grund) {
+  const k = db.getFeldkonfig();
+  $("hinweis-titel").textContent = "Unzulässiger Wunsch";
+  $("hinweis-text").textContent =
+    `Folgender Wunsch passt nicht zum ${k.stufe_label} und wurde rot hinterlegt:\n\n` +
+    `Wunsch ${rang}: ${grund}\n\n` +
+    "Die Eingabe bleibt gespeichert — sie wird bei der automatischen " +
+    "Zuteilung aber nicht berücksichtigt.";
+  $("dlg-hinweis").showModal();
 }
 
 // ── CSV-Import ───────────────────────────────────────────────────────────────
@@ -944,8 +991,27 @@ function init() {
   $("lbl-ok").addEventListener("click", speichereLabels);
   $("lbl-abbrechen").addEventListener("click", () => $("dlg-labels").close());
 
-  // Beispieldaten
-  $("btn-beispiel").addEventListener("click", ladeBeispieldaten);
+  // Beispieldaten: Auswahl (Planungsmappe / Optionsliste / Teilnehmerliste)
+  $("btn-beispiel").addEventListener("click", () => $("dlg-beispiel").showModal());
+  $("bsp-schliessen").addEventListener("click", () => $("dlg-beispiel").close());
+  $("bsp-mappe").addEventListener("click", () => {
+    $("dlg-beispiel").close(); ladeBeispieldaten();
+  });
+  $("bsp-optionen").addEventListener("click", () => {
+    $("dlg-beispiel").close();
+    importiereBeispielDatei("optionen",
+      "../beispieldaten/projektvorschlagsliste_beispiel.ods",
+      "projektvorschlagsliste_beispiel.ods");
+  });
+  $("bsp-teilnehmer").addEventListener("click", () => {
+    $("dlg-beispiel").close();
+    importiereBeispielDatei("teilnehmer",
+      "../beispieldaten/teilnehmerliste_beispiel.xlsx",
+      "teilnehmerliste_beispiel.xlsx");
+  });
+
+  // Hinweis-Popup (unzulässiger Wunsch u. a.)
+  $("hinweis-ok").addEventListener("click", () => $("dlg-hinweis").close());
 
   // CSV-Import (Teilnehmer/innen + Optionen)
   $("btn-tn-import").addEventListener("click", () => starteImport("teilnehmer"));
@@ -1043,6 +1109,10 @@ function init() {
   status(KANN_FS_API
     ? "Bereit. Dieser Browser unterstützt direktes Speichern in Dateien."
     : "Bereit. Hinweis: Dieser Browser speichert über den Download-Ordner.");
+
+  // Startbildschirm: mit dem Willkommensdialog beginnen (leere Mappe +
+  // Einrichtungsassistent), sofern noch keine Planungsmappe geöffnet ist.
+  if (!db.istOffen()) neueMappe();
 }
 
 init();
