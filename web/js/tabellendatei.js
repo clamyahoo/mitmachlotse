@@ -9,12 +9,14 @@ const SHEETJS_CDN = "https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.
 
 let sheetJsPromise = null;
 
-function ladeSheetJs() {
+/** SheetJS (XLSX) lazy vom CDN laden und das globale XLSX-Objekt liefern —
+ *  für Lesen (xlsx/xls/ods) und Schreiben (xlsx/ods) gleichermaßen. */
+export function ladeSheetJs() {
   if (!sheetJsPromise) {
     sheetJsPromise = new Promise((resolve, reject) => {
       const s = document.createElement("script");
       s.src = SHEETJS_CDN;
-      s.onload = resolve;
+      s.onload = () => resolve(globalThis.XLSX);
       s.onerror = () => {
         sheetJsPromise = null; // nächster Versuch darf neu starten
         reject(new Error("Tabellen-Leser (SheetJS) konnte nicht geladen werden."));

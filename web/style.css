@@ -373,6 +373,27 @@ tr.klickbar:hover td { background: #eef4fb; }
   user-select: none;
 }
 
+/* Listenfenster: anklickbare/ausgewählte Zeilen (für „fix zuweisen") */
+#dlg-liste tbody tr.waehlbar { cursor: pointer; }
+#dlg-liste tbody tr.waehlbar:hover td { background: #eef4fb; }
+#dlg-liste tbody tr.markiert td { background: #d6e6f5; }
+
+/* Export-Dialog der Listenfenster */
+#dlg-export { max-width: 480px; }
+.export-gruppe {
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  padding: 8px 10px;
+  margin: 8px 0;
+}
+.export-gruppe legend { font-weight: 600; color: #2c3e50; padding: 0 4px; }
+.export-radio, .export-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+}
+
 /* Wunschdetail- und Listenfenster */
 .detailfenster { max-width: 640px; }
 .detail-ueberschrift {

@@ -1,23 +1,36 @@
 /**
  * Wunschdetailfenster + Listenfenster — Web-Gegenstück zu ProjektDetailDialog
- * (dialoge.py) und den Listenfenstern (listenfenster.py):
+ * (dialoge.py) und ListenFenster (listenfenster.py):
  *
- *  - zeigeProjektdetails(nr): Statistik zu einer Option — wie oft insgesamt und
- *    je Wunschrang gewünscht, und mit welchem Wunschrang die zugeteilten
- *    Personen sie bekommen haben. Doppelklick auf eine Wunschrang-Zeile öffnet
- *    die Namensliste; Buttons öffnen Wunschauswertungs- und Teilnehmerliste.
+ *  - zeigeProjektdetails(nr): Statistik zu einer Option (Nachfrage/Zuteilung je
+ *    Wunschrang) mit Wunschauswertungs- und Teilnehmerliste.
  *  - zeigeWunschauswertung(nr, rang?): Namensliste aller Personen, die die
- *    Option (auf einem bestimmten Rang) gewünscht haben.
- *  - zeigeTeilnehmerliste(nr): der Option aktuell zugeteilte Personen.
+ *    Option (auf einem Rang) gewünscht haben.
+ *  - zeigeTeilnehmerliste(nr): der Option zugeteilte Personen.
+ *  - zeigeAenderungsuebersicht(): alle im Nachbearbeitungsmodus umverteilten
+ *    Personen.
  *
- * Die Listenfenster lassen sich als CSV exportieren. Untergeordnete Fenster
- * stapeln modal über dem Detailfenster.
+ * Die Listenfenster bieten wie am Desktop: „fix zuweisen" (Klick auf eine
+ * Person + Button oder Doppelklick), „Exportieren" (Export-Dialog mit Format,
+ * Kopfzeile, Fußzeilendatum, Spaltenauswahl → CSV/xlsx/ods) und „Drucken"
+ * (Feldauswahl → Browser-Druck).
  */
 
 import * as db from "./db.js";
-import { alsCsv, downloadText } from "./csv.js";
+import * as druck from "./druck.js";
+import { waehleSpalten, filterGruppen } from "./spaltenwahl.js";
+import { zeigeExportDialog } from "./exportdialog.js";
 
 const $ = (id) => document.getElementById(id);
+
+// Von app.js injizierte Zuweisungsfunktion: zuweisen(teilnehmerId, onDone)
+let zuweisenCb = null;
+let statusCb = () => {};
+
+export function initAuswertung({ zuweisen, status }) {
+  zuweisenCb = zuweisen || null;
+  statusCb = status || (() => {});
+}
 
 const gruppeText = (t) => {
   const zusatz = t.stufenzusatz && t.stufenzusatz !== "-" ? t.stufenzusatz : "";
@@ -26,10 +39,16 @@ const gruppeText = (t) => {
 const wuenscheVon = (t) =>
   [t.wunsch_1, t.wunsch_2, t.wunsch_3, t.wunsch_4, t.wunsch_5];
 
-// ── Generisches Listenfenster (Titel + Tabelle + CSV-Export + Schließen) ─────
+// ── Generisches Listenfenster ────────────────────────────────────────────────
 
-function zeigeListe(dlgId, titel, headers, rows, dateiname) {
-  const dlg = $(dlgId);
+/**
+ * @param {object} o  { titel, headers, rows, rowIds?, dateiBasis, refresh? }
+ *   rowIds: Teilnehmer-IDs parallel zu rows → aktiviert „fix zuweisen".
+ *   refresh: Funktion, die das Fenster nach einer Zuweisung neu aufbaut.
+ */
+function zeigeListenfenster({ titel, headers, rows, rowIds = null, dateiBasis, refresh = null }) {
+  const dlg = $("dlg-liste");
+  const k = db.getFeldkonfig();
   dlg.innerHTML = "";
 
   const h2 = document.createElement("h2");
@@ -38,7 +57,10 @@ function zeigeListe(dlgId, titel, headers, rows, dateiname) {
 
   const info = document.createElement("p");
   info.className = "hinweis";
-  info.textContent = `${rows.length} Eintrag/Einträge.`;
+  info.textContent = rowIds
+    ? `${rows.length} Eintrag/Einträge · Zeile anklicken und „fix zuweisen" ` +
+      "oder Doppelklick auf eine Zeile."
+    : `${rows.length} Eintrag/Einträge.`;
   dlg.appendChild(info);
 
   const scroll = document.createElement("div");
@@ -52,29 +74,69 @@ function zeigeListe(dlgId, titel, headers, rows, dateiname) {
   thead.appendChild(trh);
   tbl.appendChild(thead);
   const tbody = document.createElement("tbody");
-  for (const row of rows) {
+  let gewaehlteZeile = -1;
+  const trs = [];
+  rows.forEach((row, idx) => {
     const tr = document.createElement("tr");
     for (const zelle of row) {
       const td = document.createElement("td"); td.textContent = zelle; tr.appendChild(td);
     }
+    if (rowIds) {
+      tr.classList.add("waehlbar");
+      tr.addEventListener("click", () => {
+        gewaehlteZeile = idx;
+        trs.forEach((x) => x.classList.remove("markiert"));
+        tr.classList.add("markiert");
+      });
+      tr.addEventListener("dblclick", () => zuweisenFuer(idx));
+    }
+    trs.push(tr);
     tbody.appendChild(tr);
-  }
+  });
   tbl.appendChild(tbody);
   scroll.appendChild(tbl);
   dlg.appendChild(scroll);
 
+  function zuweisenFuer(idx) {
+    if (!zuweisenCb || !rowIds || idx < 0 || idx >= rowIds.length) return;
+    zuweisenCb(rowIds[idx], () => { if (refresh) refresh(); });
+  }
+
+  // ── Buttons ──
   const btns = document.createElement("div");
   btns.className = "dialog-buttons";
+
+  if (rowIds && zuweisenCb) {
+    const bZuweisen = document.createElement("button");
+    bZuweisen.textContent = `${k.projekt_label} fix zuweisen`;
+    bZuweisen.addEventListener("click", () => {
+      if (gewaehlteZeile < 0) { alert("Bitte zuerst eine Zeile anklicken."); return; }
+      zuweisenFuer(gewaehlteZeile);
+    });
+    btns.appendChild(bZuweisen);
+  }
+
   const bExport = document.createElement("button");
-  bExport.textContent = "Als CSV exportieren";
+  bExport.textContent = "Exportieren";
   bExport.disabled = !rows.length;
   bExport.addEventListener("click", () =>
-    downloadText(dateiname, alsCsv(headers, rows)));
+    zeigeExportDialog(titel, dateiBasis, headers, rows, statusCb));
+
+  const bDruck = document.createElement("button");
+  bDruck.textContent = "Drucken";
+  bDruck.disabled = !rows.length;
+  bDruck.addEventListener("click", async () => {
+    const kept = await waehleSpalten(headers);
+    if (!kept) return;
+    druck.drucke(titel, filterGruppen([{ titel, headers, rows }], kept));
+  });
+
   const bClose = document.createElement("button");
   bClose.className = "sekundaer";
   bClose.textContent = "Schließen";
   bClose.addEventListener("click", () => dlg.close());
-  btns.append(bExport, bClose);
+
+  btns.append(bExport, bDruck, bClose);
   dlg.appendChild(btns);
 
   if (!dlg.open) dlg.showModal();
@@ -100,11 +162,15 @@ export function zeigeWunschauswertung(nummer, rang = null) {
     t.projekt ? `${t.projekt}: ${projekte[t.projekt]?.projektname ?? "?"}` : "–",
     t.fest_zugewiesen ? "✓" : "",
   ]);
+  const rowIds = treffer.map(({ t }) => t.id);
 
   const rangTeil = rang ? ` · nur Wunsch ${rang}` : "";
-  zeigeListe("dlg-liste",
-    `Wunschauswertung — ${nummer}: ${p?.projektname ?? "?"}${rangTeil}`,
-    headers, rows, `wunschauswertung_${nummer}${rang ? "_w" + rang : ""}.csv`);
+  zeigeListenfenster({
+    titel: `Wunschauswertung — ${nummer}: ${p?.projektname ?? "?"}${rangTeil}`,
+    headers, rows, rowIds,
+    dateiBasis: `wunschauswertung_${nummer}${rang ? "_w" + rang : ""}`,
+    refresh: () => zeigeWunschauswertung(nummer, rang),
+  });
 }
 
 // ── Teilnehmerliste (zugeteilte Personen) ────────────────────────────────────
@@ -126,9 +192,39 @@ export function zeigeTeilnehmerliste(nummer) {
     `${t.nachname}, ${t.vorname}`, gruppeText(t), rangText(t),
     t.fest_zugewiesen ? "✓" : "",
   ]);
-  zeigeListe("dlg-liste",
-    `Teilnehmerliste — ${nummer}: ${p?.projektname ?? "?"} (${tn.length})`,
-    headers, rows, `teilnehmerliste_${nummer}.csv`);
+  zeigeListenfenster({
+    titel: `Teilnehmerliste — ${nummer}: ${p?.projektname ?? "?"} (${tn.length})`,
+    headers, rows, rowIds: tn.map((t) => t.id),
+    dateiBasis: `teilnehmerliste_${nummer}`,
+    refresh: () => zeigeTeilnehmerliste(nummer),
+  });
+}
+
+// ── Übersicht der Änderungen (Nachbearbeitungsmodus) ─────────────────────────
+
+export function zeigeAenderungsuebersicht() {
+  const k = db.getFeldkonfig();
+  const projekte = Object.fromEntries(db.getAlleProjekte().map((p) => [p.nummer, p]));
+  const nameVon = (nr) => nr ? `${nr}: ${projekte[nr]?.projektname ?? "?"}` : "–";
+  const liste = db.getAenderungen().slice().sort((a, b) =>
+    `${a.stufe} ${a.nachname}`.localeCompare(`${b.stufe} ${b.nachname}`, "de", { numeric: true }));
+
+  const headers = ["Name", k.stufe_label, k.stufenzusatz_label,
+                   "Vorher", "Jetzt", "Wunschrang erhalten"];
+  const rows = liste.map((t) => {
+    const wuensche = wuenscheVon(t).slice(0, k.max_wuensche).filter((w) => w !== 0);
+    const idx = wuensche.indexOf(t.projekt);
+    const rang = !t.projekt ? "–" : idx >= 0 ? `Wunsch ${idx + 1}` : "kein Wunsch";
+    const zusatz = t.stufenzusatz && t.stufenzusatz !== "-" ? t.stufenzusatz : "";
+    return [`${t.nachname}, ${t.vorname}`, t.stufe, zusatz,
+            nameVon(t.projekt_baseline), nameVon(t.projekt), rang];
+  });
+  zeigeListenfenster({
+    titel: `Übersicht der Änderungen (${rows.length})`,
+    headers, rows, rowIds: liste.map((t) => t.id),
+    dateiBasis: "aenderungsuebersicht",
+    refresh: () => zeigeAenderungsuebersicht(),
+  });
 }
 
 // ── Wunschdetailfenster ──────────────────────────────────────────────────────

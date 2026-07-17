@@ -55,7 +55,7 @@ function aktualisiereKopf() {
                     "btn-labels", "btn-tabellen", "btn-tn-import", "btn-opt-import",
                     "btn-quali", "btn-quali-export", "btn-druck-optionen",
                     "btn-druck-gruppen", "btn-druck-einzeloption",
-                    "btn-druck-einzelgruppe", "btn-aenderungen-export", "btn-raum-neu",
+                    "btn-druck-einzelgruppe", "btn-aenderungen-uebersicht", "btn-raum-neu",
                     "btn-raum-loeschen", "btn-raum-auto", "btn-raum-reset",
                     "btn-raum-druck", "btn-bearbeitungsmodus",
                     "btn-raum-import", "btn-raum-export"]) {
@@ -232,6 +232,35 @@ function fuelleProjektSelect(sel, t, projekte, projekteDict, zeigeAlle) {
       sel.appendChild(new Option("➕ weitere Optionen anzeigen …", "__alle__"));
     }
   }
+}
+
+/** Fix-Zuweisung aus einem Listenfenster heraus (Spiegel von
+ *  _feste_zuweisung/ProjektZuweisungDialog): Dialog mit der Wunschliste +
+ *  Ausklappen; setzt Zuteilung und fest_zugewiesen. onDone() aktualisiert das
+ *  aufrufende Listenfenster. */
+function zuweisen(teilnehmerId, onDone) {
+  const t = db.getAlleTeilnehmer().find((x) => x.id === teilnehmerId);
+  if (!t) return;
+  const projekte = db.getAlleProjekte();
+  const projekteDict = Object.fromEntries(projekte.map((p) => [p.nummer, p]));
+  $("zuweisen-titel").textContent = `${t.nachname}, ${t.vorname} — fix zuweisen`;
+  const sel = $("zuweisen-select");
+  fuelleProjektSelect(sel, t, projekte, projekteDict, false);
+  sel.onchange = () => {
+    if (sel.value === "__alle__") fuelleProjektSelect(sel, t, projekte, projekteDict, true);
+    else if (sel.value === "__sep__") sel.value = String(t.projekt);
+  };
+  $("zuweisen-ok").onclick = () => {
+    if (sel.value === "__alle__" || sel.value === "__sep__") return;
+    const nr = parseInt(sel.value, 10) || 0;
+    db.updateTeilnehmerFeld(teilnehmerId, "projekt", nr);
+    db.updateTeilnehmerFeld(teilnehmerId, "fest_zugewiesen", nr !== 0 ? 1 : 0);
+    setzeDirty(true);
+    $("dlg-zuweisen").close();
+    renderAlles();
+    if (onDone) onDone();
+  };
+  $("dlg-zuweisen").showModal();
 }
 
 function renderTeilnehmer() {
@@ -851,29 +880,19 @@ function renderAenderungen() {
   }
 }
 
-function exportAenderungen() {
-  const k = db.getFeldkonfig();
-  const liste = db.getAenderungen();
-  if (!liste.length) {
-    alert(db.istBearbeitungsmodus()
-      ? "Noch keine Umverteilungen seit Modus-Start."
-      : "Der Bearbeitungsmodus ist nicht aktiv.");
+/** „Übersicht der Änderungen": öffnet das Listenfenster mit Export/Druck
+ *  (Nachbearbeitungsmodus). */
+function zeigeAenderungsuebersicht() {
+  if (!db.istBearbeitungsmodus()) {
+    alert("Der Bearbeitungsmodus ist nicht aktiv.\n\nDiese Übersicht zeigt alle " +
+      "Umverteilungen seit dem Einschalten des Bearbeitungsmodus.");
     return;
   }
-  const projekte = Object.fromEntries(db.getAlleProjekte().map((p) => [p.nummer, p]));
-  const nameVon = (nr) => nr ? `${nr}: ${projekte[nr]?.projektname ?? "?"}` : "–";
-  const headers = ["Name", k.stufe_label, "Vorher", "Jetzt", "Wunschrang erhalten"];
-  const rows = liste.map((t) => {
-    const wuensche = [t.wunsch_1, t.wunsch_2, t.wunsch_3, t.wunsch_4, t.wunsch_5]
-      .slice(0, k.max_wuensche).filter((w) => w !== 0);
-    const rangIdx = wuensche.indexOf(t.projekt);
-    const rang = !t.projekt ? "–" : rangIdx >= 0 ? `Wunsch ${rangIdx + 1}` : "kein Wunsch";
-    const zusatz = t.stufenzusatz && t.stufenzusatz !== "-" ? t.stufenzusatz : "";
-    return [`${t.nachname}, ${t.vorname}`, `${t.stufe}${zusatz}`,
-            nameVon(t.projekt_baseline), nameVon(t.projekt), rang];
-  });
-  downloadText("aenderungen.csv", alsCsv(headers, rows));
-  status(`Änderungsliste als CSV exportiert (${rows.length}).`);
+  if (!db.getAenderungen().length) {
+    alert("Seit dem Einschalten des Bearbeitungsmodus wurde noch keine Zuteilung geändert.");
+    return;
+  }
+  auswertung.zeigeAenderungsuebersicht();
 }
 
 // ── Qualitätsprüfung ─────────────────────────────────────────────────────────
@@ -1087,7 +1106,11 @@ function init() {
 
   // Nachbearbeitungsmodus
   $("btn-bearbeitungsmodus").addEventListener("click", toggleBearbeitungsmodus);
-  $("btn-aenderungen-export").addEventListener("click", exportAenderungen);
+  $("btn-aenderungen-uebersicht").addEventListener("click", zeigeAenderungsuebersicht);
+
+  // Listenfenster-Auswertung: Fix-Zuweisung injizieren
+  auswertung.initAuswertung({ zuweisen, status });
+  $("zuweisen-abbrechen").addEventListener("click", () => $("dlg-zuweisen").close());
 
   // Raumplan-Tab (eigenes Modul); der Raumlisten-Import nutzt den zentralen
   // Datei-Input hier in app.js

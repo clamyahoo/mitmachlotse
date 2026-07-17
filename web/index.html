@@ -141,7 +141,7 @@
         <b>Ausschalten</b> macht den aktuellen Stand endgültig fest.</p>
       <div class="aktionszeile">
         <button id="btn-bearbeitungsmodus" disabled>Bearbeitungsmodus Ein</button>
-        <button id="btn-aenderungen-export" disabled>Änderungen als CSV</button>
+        <button id="btn-aenderungen-uebersicht" disabled>Übersicht der Änderungen</button>
         <span id="bm-anzahl" class="anzahl"></span>
       </div>
       <div class="tabellen-scroll">
@@ -294,6 +294,25 @@
 
 <!-- ── Dialog: Listenfenster (Wunschauswertung/Teilnehmerliste, dynamisch) ── -->
 <dialog id="dlg-liste" class="detailfenster"></dialog>
+
+<!-- ── Dialog: Export einer Fensterliste (Format/Kopfzeile/Datum/Spalten) ── -->
+<dialog id="dlg-export"></dialog>
+
+<!-- ── Dialog: Fix-Zuweisung aus einem Listenfenster ── -->
+<dialog id="dlg-zuweisen">
+  <h2 id="zuweisen-titel">Fix zuweisen</h2>
+  <p class="hinweis">Angeboten werden zunächst die gewählten Wünsche; über
+    „➕ weitere Optionen anzeigen" lässt sich die komplette Liste einblenden.
+    Eine feste Zuweisung wird bei der automatischen Zuteilung nicht verändert.</p>
+  <div class="formzeile">
+    <label for="zuweisen-select">Zuteilung</label>
+    <select id="zuweisen-select"></select>
+  </div>
+  <div class="dialog-buttons">
+    <button class="sekundaer" id="zuweisen-abbrechen">Abbrechen</button>
+    <button id="zuweisen-ok">Zuweisen</button>
+  </div>
+</dialog>
 
 <!-- ── Dialog: Beispieldaten auswählen ── -->
 <dialog id="dlg-beispiel">
