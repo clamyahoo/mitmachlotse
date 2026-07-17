@@ -124,6 +124,10 @@
 
     <div class="karte">
       <h2 id="uebersicht-titel">Belegungsübersicht</h2>
+      <p class="hinweis">Klick auf eine Zeile öffnet die <b>Wunschdetails</b>:
+        wie oft die Option je Wunschrang gewünscht wurde, mit welchem Rang die
+        Zugeteilten sie bekommen haben, samt Wunschauswertungs- und
+        Teilnehmerliste (je als CSV exportierbar).</p>
       <table id="uebersicht-tabelle" class="kompakt"><thead></thead><tbody></tbody></table>
     </div>
 
@@ -137,6 +141,7 @@
         <b>Ausschalten</b> macht den aktuellen Stand endgültig fest.</p>
       <div class="aktionszeile">
         <button id="btn-bearbeitungsmodus" disabled>Bearbeitungsmodus Ein</button>
+        <button id="btn-aenderungen-export" disabled>Änderungen als CSV</button>
         <span id="bm-anzahl" class="anzahl"></span>
       </div>
       <div class="tabellen-scroll">
@@ -150,24 +155,43 @@
         Vollständigkeit, fehlende Wünsche und Mehrfachnennungen.</p>
       <div class="aktionszeile">
         <button id="btn-quali" disabled>Jetzt prüfen</button>
+        <label class="filter-label">Filter
+          <select id="quali-filter" disabled>
+            <option value="alle">Alle Kategorien</option>
+            <option value="unzulaessig">⚠ Unzulässig</option>
+            <option value="unvollstaendig">✎ Unvollständig</option>
+            <option value="keine">○ Keine Wünsche</option>
+            <option value="mehrfach">↻ Mehrfach</option>
+          </select>
+        </label>
+        <button id="btn-quali-export" disabled>Als CSV</button>
         <span id="quali-zusammenfassung" class="anzahl"></span>
       </div>
-      <div class="tabellen-scroll">
-        <table id="quali-tabelle"><thead></thead><tbody></tbody></table>
-      </div>
+      <details id="quali-details" class="einklappbar" open>
+        <summary>Ergebnisliste ein-/ausklappen</summary>
+        <div class="tabellen-scroll">
+          <table id="quali-tabelle"><thead></thead><tbody></tbody></table>
+        </div>
+      </details>
     </div>
 
     <div class="karte">
       <h2>Listen &amp; Druck</h2>
-      <p class="hinweis">Öffnet die Druckansicht des Browsers — dort lässt sich
-        auch <b>„Als PDF speichern"</b> wählen.</p>
+      <p class="hinweis">Öffnet die Druckansicht des Browsers. Als Ziel bieten
+        praktisch alle aktuellen Browser (Chrome, Edge, Firefox, Safari)
+        <b>„Als PDF speichern"</b> an — bei Firefox/Safari im Ziel- bzw.
+        PDF-Menü. Vor jedem Druck erscheint die Feldauswahl.</p>
       <div class="aktionszeile">
         <button id="btn-druck-optionen" disabled>Gesamtliste nach Optionen</button>
         <button id="btn-druck-gruppen" disabled>Gesamtliste nach Gruppen</button>
       </div>
       <div class="aktionszeile">
         <select id="druck-option-select" disabled></select>
-        <button id="btn-druck-einzeloption" disabled>Teilnehmerliste drucken</button>
+        <button id="btn-druck-einzeloption" disabled>Teilnehmerliste (Option) drucken</button>
+      </div>
+      <div class="aktionszeile">
+        <select id="druck-gruppe-select" disabled></select>
+        <button id="btn-druck-einzelgruppe" disabled>Gruppenliste (Gruppe) drucken</button>
       </div>
     </div>
 
@@ -260,6 +284,12 @@
 
 <!-- ── Dialog: Tabellen-Export-/Importassistent (Inhalt dynamisch) ── -->
 <dialog id="dlg-tabellen" class="assistent"></dialog>
+
+<!-- ── Dialog: Wunschdetails zu einer Option (Inhalt dynamisch) ── -->
+<dialog id="dlg-projektdetails" class="detailfenster"></dialog>
+
+<!-- ── Dialog: Listenfenster (Wunschauswertung/Teilnehmerliste, dynamisch) ── -->
+<dialog id="dlg-liste" class="detailfenster"></dialog>
 
 <!-- ── Druckbereich (nur in der Druckansicht sichtbar) ── -->
 <div id="druckbereich"></div>

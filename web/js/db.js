@@ -310,6 +310,60 @@ export function getWunschstatistik(maxWuensche) {
   return { gesamt: alle.length, zugeteilt, treffer };
 }
 
+// ── Wunschauswertung / Projektdetails (Spiegel von listenabfragen.py) ────────
+
+const _wuensche = (t) =>
+  [t.wunsch_1, t.wunsch_2, t.wunsch_3, t.wunsch_4, t.wunsch_5];
+
+/** Detailstatistik zu einer Option (Spiegel von get_projektdetails):
+ *  Gesamtnachfrage, Nachfrage je Wunschrang, Zuteilung je Wunschrang. */
+export function getProjektdetails(nummer) {
+  const projekte = Object.fromEntries(getAlleProjekte().map((p) => [p.nummer, p]));
+  const p = projekte[nummer];
+  if (!p) return null;
+  const alle = getAlleTeilnehmer();
+  const wunschNachRang = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  let gesamtGewuenscht = 0;
+  for (const t of alle) {
+    const idx = _wuensche(t).indexOf(nummer);
+    if (idx >= 0) { wunschNachRang[idx + 1]++; gesamtGewuenscht++; }
+  }
+  const zugeteilt = alle.filter((t) => t.projekt === nummer);
+  const zuteilungNachRang = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  let ohneWunsch = 0;
+  for (const t of zugeteilt) {
+    const idx = _wuensche(t).indexOf(nummer);
+    if (idx >= 0) zuteilungNachRang[idx + 1]++; else ohneWunsch++;
+  }
+  return {
+    projekt: p, gesamtGewuenscht, wunschNachRang,
+    anzahlZugeteilt: zugeteilt.length, zuteilungNachRang,
+    zuteilungOhneWunsch: ohneWunsch,
+  };
+}
+
+/** Personen, die eine Option gewünscht haben — optional gefiltert auf einen
+ *  Wunschrang (Spiegel von get_wunschauswertung mit Projektfilter). */
+export function getWunschauswertung(nummer, rang = null) {
+  const alle = getAlleTeilnehmer();
+  const treffer = [];
+  for (const t of alle) {
+    const w = _wuensche(t);
+    if (rang) {
+      if (w[rang - 1] === nummer) treffer.push({ t, rang });
+    } else {
+      const idx = w.indexOf(nummer);
+      if (idx >= 0) treffer.push({ t, rang: idx + 1 });
+    }
+  }
+  return treffer;
+}
+
+/** Einer Option zugeteilte Personen (Spiegel von get_projektteilnehmerliste). */
+export function getProjektteilnehmerliste(nummer) {
+  return getAlleTeilnehmer().filter((t) => t.projekt === nummer);
+}
+
 // ── Label-Grammatik (Spiegel von database.get_label_formen der Desktop-App) ──
 
 const _FUGEN_S = new Set(["Option", "Veranstaltung", "Angebot", "Aktion"]);

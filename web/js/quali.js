@@ -7,9 +7,40 @@
  *   ✎ Unvollständig   — weniger als die konfigurierte Wunschanzahl
  *   ○ Keine Wünsche   — alle Wunschfelder leer
  *   ↻ Mehrfach        — dieselbe Option mehrmals gewählt (nur Hinweis)
+ *
+ * Zusätzlich stellt das Modul die fortlaufende Einzelprüfung eines Wunsches
+ * bereit (wunschZulaessig), die die Teilnehmertabelle nutzt, um unzulässige
+ * Wünsche direkt bei der Eingabe zu markieren.
  */
 
 import * as db from "./db.js";
+
+/** Jahrgangsstufe robust als Zahl lesen (Spiegel von validierung.jgst_int):
+ *  "5" → 5, "5a" → 5, "5.0"/"5,0" → 5, "-"/"" → 0. */
+export function stufeZahl(stufe) {
+  const s = String(stufe ?? "").trim();
+  if (!s || s === "-") return 0;
+  const f = parseFloat(s.replace(",", "."));
+  if (!Number.isNaN(f)) return Math.trunc(f);
+  const m = s.match(/^\d+/);
+  return m ? parseInt(m[0], 10) : 0;
+}
+
+/** Prüft einen einzelnen Wunsch gegen die Stufenzulassung des Projekts.
+ *  Rückgabe: { ok:true } oder { ok:false, grund:"…" }. */
+export function wunschZulaessig(stufe, wunschNr, projekteDict, k = null) {
+  if (!wunschNr) return { ok: true };
+  const konfig = k || db.getFeldkonfig();
+  const p = projekteDict[wunschNr];
+  if (!p) return { ok: false, grund: `${konfig.projekt_label} ${wunschNr} existiert nicht` };
+  const jgst = stufeZahl(stufe);
+  if (jgst !== 0 && (jgst < p.stufenmin || jgst > p.stufenmax)) {
+    return { ok: false, grund:
+      `${konfig.projekt_label} ${wunschNr} nur für ${konfig.stufe_label} ` +
+      `${p.stufenmin}–${p.stufenmax} (${konfig.stufe_label} ${jgst})` };
+  }
+  return { ok: true };
+}
 
 export function pruefeQualitaet() {
   const k = db.getFeldkonfig();
@@ -26,12 +57,12 @@ export function pruefeQualitaet() {
     const aktive = wuensche.filter((w) => w !== 0);
 
     if (!aktive.length) {
-      eintraege.push({ icon: "○", kategorie: "Keine Wünsche", name, gruppe,
+      eintraege.push({ key: "keine", icon: "○", kategorie: "Keine Wünsche", name, gruppe,
         details: "alle Wunschfelder leer — bleibt bei der Zuteilung unversorgt" });
       continue;
     }
     if (aktive.length < mw) {
-      eintraege.push({ icon: "✎", kategorie: "Unvollständig", name, gruppe,
+      eintraege.push({ key: "unvollstaendig", icon: "✎", kategorie: "Unvollständig", name, gruppe,
         details: `nur ${aktive.length} von ${mw} Wünschen ausgefüllt` });
     }
 
@@ -44,26 +75,18 @@ export function pruefeQualitaet() {
         const p = projekte[nr];
         return `${nr}${p ? ` (${p.projektname})` : ""} auf Wunsch ${raenge.join(" und ")}`;
       }).join("; ");
-      eintraege.push({ icon: "↻", kategorie: "Mehrfach", name, gruppe, details });
+      eintraege.push({ key: "mehrfach", icon: "↻", kategorie: "Mehrfach", name, gruppe, details });
     }
 
     // Unzulässige Wünsche (Bereich / unbekannte Nummer)
-    const jgstRoh = parseInt(String(t.stufe), 10);
-    const jgst = Number.isNaN(jgstRoh) ? 0 : jgstRoh;
     const probleme = [];
     wuensche.forEach((w, i) => {
       if (!w) return;
-      const p = projekte[w];
-      if (!p) {
-        probleme.push(`Wunsch ${i + 1}: ${k.projekt_label} ${w} existiert nicht`);
-      } else if (jgst !== 0 && (jgst < p.stufenmin || jgst > p.stufenmax)) {
-        probleme.push(
-          `Wunsch ${i + 1} (${w}: ${p.projektname}): Bereich ` +
-          `${p.stufenmin}–${p.stufenmax}, aber ${k.stufe_label} ${jgst}`);
-      }
+      const r = wunschZulaessig(t.stufe, w, projekte, k);
+      if (!r.ok) probleme.push(`Wunsch ${i + 1}: ${r.grund}`);
     });
     if (probleme.length) {
-      eintraege.push({ icon: "⚠", kategorie: "Unzulässig", name, gruppe,
+      eintraege.push({ key: "unzulaessig", icon: "⚠", kategorie: "Unzulässig", name, gruppe,
         details: probleme.join("; ") });
     }
   }

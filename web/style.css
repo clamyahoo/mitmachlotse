@@ -316,6 +316,47 @@ button.sekundaer:hover:not(:disabled) { background: #95a5a6; }
 #raumplan-tabelle tr.konflikt-doppel td { background: #f8d0d0; }
 #raumplan-tabelle tr.konflikt-kap td    { background: #ffe3b3; }
 
+/* Fortlaufende Wunschprüfung: unzulässiger Wunsch rot markiert */
+td.wunsch-unzulaessig input {
+  background: #ffd9d9;
+  border-color: #e06666;
+}
+
+/* Klickbare Zeilen (Belegungsübersicht → Wunschdetails; Detailtabellen) */
+tr.klickbar { cursor: pointer; }
+tr.klickbar:hover td { background: #eef4fb; }
+
+/* Qualitätsprüfung: Filter + einklappbare Ergebnisliste */
+.filter-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #555;
+}
+.filter-label select {
+  border: 1px solid #bbb;
+  border-radius: 4px;
+  padding: 3px 6px;
+  font: inherit;
+}
+.einklappbar > summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: #2c3e50;
+  padding: 4px 0;
+  user-select: none;
+}
+
+/* Wunschdetail- und Listenfenster */
+.detailfenster { max-width: 640px; }
+.detail-ueberschrift {
+  font-size: 13px;
+  margin: 14px 0 4px;
+  color: #2c3e50;
+}
+.liste-scroll { max-height: 55vh; }
+
 /* Nachbearbeitungsmodus: geänderte Zuteilung (gelb wie Desktop #fff3b0) */
 td.bm-geaendert { background: #fff3b0; }
 .bm-vorher {

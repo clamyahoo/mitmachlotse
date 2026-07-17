@@ -17,7 +17,8 @@ import * as solver from "./solver.js";
 import { alsCsv, downloadText } from "./csv.js";
 import { oeffneImportDialog } from "./importdialog.js";
 import * as druck from "./druck.js";
-import { pruefeQualitaet } from "./quali.js";
+import { pruefeQualitaet, wunschZulaessig } from "./quali.js";
+import * as auswertung from "./auswertung.js";
 import { liesTabellenDatei } from "./tabellendatei.js";
 import { initRaumplan, renderRaumplan } from "./raumplan.js";
 import { waehleSpalten, filterGruppen } from "./spaltenwahl.js";
@@ -52,8 +53,9 @@ function aktualisiereKopf() {
                     "btn-tn-loeschen", "btn-opt-neu", "btn-opt-loeschen",
                     "btn-csv-gesamt", "btn-zuteilung-aufheben",
                     "btn-labels", "btn-tabellen", "btn-tn-import", "btn-opt-import",
-                    "btn-quali", "btn-druck-optionen", "btn-druck-gruppen",
-                    "btn-druck-einzeloption", "btn-raum-neu",
+                    "btn-quali", "btn-quali-export", "btn-druck-optionen",
+                    "btn-druck-gruppen", "btn-druck-einzeloption",
+                    "btn-druck-einzelgruppe", "btn-aenderungen-export", "btn-raum-neu",
                     "btn-raum-loeschen", "btn-raum-auto", "btn-raum-reset",
                     "btn-raum-druck", "btn-bearbeitungsmodus",
                     "btn-raum-import", "btn-raum-export"]) {
@@ -62,6 +64,8 @@ function aktualisiereKopf() {
   syncBearbeitungsmodus();
   $("tn-suche").disabled = !offen;
   $("druck-option-select").disabled = !offen;
+  $("druck-gruppe-select").disabled = !offen;
+  $("quali-filter").disabled = !offen;
   const darfZuteilen = offen && Kontext.darfZuteilen();
   for (const id of ["btn-algo-a", "btn-algo-b", "btn-algo-c"]) {
     $(id).disabled = !darfZuteilen;
@@ -185,10 +189,56 @@ function markiereProjektZelle(td, baseline, aktuell) {
   td.appendChild(hinweisEl);
 }
 
+/** Füllt das Zuteilungs-Dropdown einer Teilnehmerzeile. Standardmäßig nur die
+ *  gewählten Wünsche (in Wunschreihenfolge) + „(keine)" + Ausklapp-Eintrag;
+ *  mit zeigeAlle=true zusätzlich alle übrigen Optionen. Spiegel von
+ *  hauptfenster._feste_zuweisung. */
+function fuelleProjektSelect(sel, t, projekte, projekteDict, zeigeAlle) {
+  sel.innerHTML = "";
+  const wunschNrn = [t.wunsch_1, t.wunsch_2, t.wunsch_3, t.wunsch_4, t.wunsch_5]
+    .filter((w) => w !== 0);
+  const keinWunsch = wunschNrn.length === 0;
+  sel.appendChild(new Option("0 – (keine)", "0", false, t.projekt === 0));
+  const drin = new Set([0]);
+  wunschNrn.forEach((nr, i) => {
+    if (drin.has(nr)) return;                    // Duplikate nur einmal
+    const p = projekteDict[nr];
+    sel.appendChild(new Option(
+      `Wunsch ${i + 1}: ${nr} – ${p ? p.projektname : "?"}`,
+      String(nr), false, t.projekt === nr));
+    drin.add(nr);
+  });
+  if (zeigeAlle || keinWunsch) {
+    const uebrige = projekte.filter((p) => !drin.has(p.nummer));
+    if (uebrige.length && !keinWunsch) {
+      const sep = new Option("── weitere Optionen ──", "__sep__");
+      sep.disabled = true;
+      sel.appendChild(sep);
+    }
+    for (const p of uebrige) {
+      sel.appendChild(new Option(
+        `${p.nummer}: ${p.projektname}`, String(p.nummer), false, t.projekt === p.nummer));
+      drin.add(p.nummer);
+    }
+  } else {
+    // aktuelle Zuteilung sichtbar halten, auch wenn sie kein Wunsch war
+    if (t.projekt && !drin.has(t.projekt)) {
+      const p = projekteDict[t.projekt];
+      sel.appendChild(new Option(
+        `${t.projekt}: ${p ? p.projektname : "?"}`, String(t.projekt), false, true));
+      drin.add(t.projekt);
+    }
+    if (projekte.some((p) => !drin.has(p.nummer))) {
+      sel.appendChild(new Option("➕ weitere Optionen anzeigen …", "__alle__"));
+    }
+  }
+}
+
 function renderTeilnehmer() {
   const k = db.getFeldkonfig();
   const mw = k.max_wuensche;
   const projekte = db.getAlleProjekte();
+  const projekteDict = Object.fromEntries(projekte.map((p) => [p.nummer, p]));
   const modusAktiv = db.istBearbeitungsmodus();
   const suchbegriff = $("tn-suche").value.trim().toLowerCase();
 
@@ -227,34 +277,60 @@ function renderTeilnehmer() {
     }, { disabled: !darf });
     tr.appendChild(textFeld("nachname"));
     tr.appendChild(textFeld("vorname"));
-    tr.appendChild(textFeld("stufe"));
+    // Stufe wirkt auf die Wunsch-Zulässigkeit → bei Änderung Zeilen neu prüfen
+    tr.appendChild(inputZelle("text", t.stufe, (inp) => {
+      db.updateTeilnehmerFeld(t.id, "stufe", inp.value);
+      setzeDirty(true);
+      renderTeilnehmer();
+    }, { disabled: !darf }));
     tr.appendChild(textFeld("stufenzusatz"));
     for (const e of tnExtras) tr.appendChild(textFeld(e.key));
 
+    // Wunschfelder mit fortlaufender Zulässigkeitsprüfung (Punkt: Markierung
+    // unzulässiger Wünsche direkt bei der Eingabe, wie am Desktop).
     for (let i = 1; i <= mw; i++) {
       const feld = `wunsch_${i}`;
-      tr.appendChild(inputZelle("number", t[feld], (inp) => {
-        db.updateTeilnehmerFeld(t.id, feld, parseInt(inp.value, 10) || 0);
+      const td = document.createElement("td");
+      td.className = "zahl";
+      const input = document.createElement("input");
+      input.type = "number"; input.min = 0;
+      input.value = t[feld] ?? "";
+      input.disabled = !darf;
+      const markiere = (wert) => {
+        const r = wunschZulaessig(t.stufe, wert, projekteDict, k);
+        td.classList.toggle("wunsch-unzulaessig", !r.ok);
+        input.title = r.ok ? "" : "⚠ " + r.grund;
+      };
+      markiere(t[feld]);
+      input.addEventListener("change", () => {
+        const wert = parseInt(input.value, 10) || 0;
+        db.updateTeilnehmerFeld(t.id, feld, wert);
+        t[feld] = wert;
         setzeDirty(true);
-      }, { disabled: !darf }));
+        markiere(wert);
+      });
+      td.appendChild(input);
+      tr.appendChild(td);
     }
 
-    // Zuteilung: Auswahlliste 0 + alle Optionsnummern
+    // Zuteilung: zunächst nur die gewählten Wünsche + Ausklappen auf alle
+    // Optionen (Punkt: fixe Zuweisung wie am Desktop).
     const tdProjekt = document.createElement("td");
     const sel = document.createElement("select");
     sel.disabled = !Kontext.darfZuteilen();
-    const opt0 = new Option("0 – (keine)", 0, false, t.projekt === 0);
-    sel.appendChild(opt0);
-    for (const p of projekte) {
-      sel.appendChild(new Option(
-        `${p.nummer}: ${p.projektname}`, p.nummer, false, t.projekt === p.nummer
-      ));
-    }
+    fuelleProjektSelect(sel, t, projekte, projekteDict, false);
     sel.addEventListener("change", () => {
+      if (sel.value === "__alle__") {
+        fuelleProjektSelect(sel, t, projekte, projekteDict, true);
+        return;
+      }
+      if (sel.value === "__sep__") { sel.value = String(t.projekt); return; }
       const neu = parseInt(sel.value, 10) || 0;
       db.updateTeilnehmerFeld(t.id, "projekt", neu);
+      t.projekt = neu;
       setzeDirty(true);
-      tr.querySelector(".fix-cb").disabled = sel.value === "0";
+      tr.querySelector(".fix-cb").disabled = neu === 0;
+      tdProjekt.classList.toggle("warn", neu === 0);
       if (modusAktiv) markiereProjektZelle(tdProjekt, t.projekt_baseline, neu);
     });
     if (t.projekt === 0) tdProjekt.classList.add("warn");
@@ -386,6 +462,9 @@ function renderZuteilung() {
   for (const p of db.getAlleProjekte()) {
     const belegt = belegung[p.nummer] || 0;
     const tr = document.createElement("tr");
+    tr.className = "klickbar";
+    tr.title = "Klick: Wunschdetails zu dieser Option";
+    tr.addEventListener("click", () => auswertung.zeigeProjektdetails(p.nummer));
     tr.appendChild(textZelle(String(p.nummer), "zahl"));
     tr.appendChild(textZelle(p.projektname));
     tr.appendChild(textZelle(String(p.tnmin), "zahl"));
@@ -405,6 +484,16 @@ function renderZuteilung() {
     dsel.appendChild(new Option(`${p.nummer}: ${p.projektname}`, p.nummer));
   }
   if (vorher) dsel.value = vorher;
+
+  // Gruppen-Auswahl für den Einzel-Gruppendruck
+  const gsel = $("druck-gruppe-select");
+  const gvorher = gsel.value;
+  gsel.innerHTML = "";
+  for (const name of druck.gruppenNamen()) {
+    gsel.appendChild(new Option(`${k.stufe_label} ${name}`, name));
+  }
+  if (gvorher) gsel.value = gvorher;
+
   $("btn-druck-optionen").textContent =
     `Gesamtliste nach ${pluralDativ(k.projekt_label)}`;
 
@@ -715,9 +804,48 @@ function renderAenderungen() {
   }
 }
 
+function exportAenderungen() {
+  const k = db.getFeldkonfig();
+  const liste = db.getAenderungen();
+  if (!liste.length) {
+    alert(db.istBearbeitungsmodus()
+      ? "Noch keine Umverteilungen seit Modus-Start."
+      : "Der Bearbeitungsmodus ist nicht aktiv.");
+    return;
+  }
+  const projekte = Object.fromEntries(db.getAlleProjekte().map((p) => [p.nummer, p]));
+  const nameVon = (nr) => nr ? `${nr}: ${projekte[nr]?.projektname ?? "?"}` : "–";
+  const headers = ["Name", k.stufe_label, "Vorher", "Jetzt", "Wunschrang erhalten"];
+  const rows = liste.map((t) => {
+    const wuensche = [t.wunsch_1, t.wunsch_2, t.wunsch_3, t.wunsch_4, t.wunsch_5]
+      .slice(0, k.max_wuensche).filter((w) => w !== 0);
+    const rangIdx = wuensche.indexOf(t.projekt);
+    const rang = !t.projekt ? "–" : rangIdx >= 0 ? `Wunsch ${rangIdx + 1}` : "kein Wunsch";
+    const zusatz = t.stufenzusatz && t.stufenzusatz !== "-" ? t.stufenzusatz : "";
+    return [`${t.nachname}, ${t.vorname}`, `${t.stufe}${zusatz}`,
+            nameVon(t.projekt_baseline), nameVon(t.projekt), rang];
+  });
+  downloadText("aenderungen.csv", alsCsv(headers, rows));
+  status(`Änderungsliste als CSV exportiert (${rows.length}).`);
+}
+
 // ── Qualitätsprüfung ─────────────────────────────────────────────────────────
+let letzteQualiEintraege = [];   // Ergebnis des letzten „Jetzt prüfen"-Laufs
+
+function gefilterteQuali() {
+  const f = $("quali-filter").value;
+  return f === "alle" ? letzteQualiEintraege
+    : letzteQualiEintraege.filter((e) => e.key === f);
+}
+
 function zeigeQualitaet() {
-  const eintraege = pruefeQualitaet();
+  letzteQualiEintraege = pruefeQualitaet();
+  $("quali-details").open = true;
+  renderQualiTabelle();
+}
+
+function renderQualiTabelle() {
+  const eintraege = gefilterteQuali();
   kopfzeile($("quali-tabelle").querySelector("thead"),
     ["", "Kategorie", "Name", "Gruppe", "Details"]);
   const tbody = $("quali-tabelle").querySelector("tbody");
@@ -733,9 +861,24 @@ function zeigeQualitaet() {
     tr.appendChild(textZelle(e.details));
     tbody.appendChild(tr);
   }
-  $("quali-zusammenfassung").textContent = eintraege.length
-    ? `${eintraege.length} Hinweis(e)`
-    : "Keine Auffälligkeiten ✓";
+  const gesamt = letzteQualiEintraege.length;
+  const gezeigt = eintraege.length;
+  $("quali-zusammenfassung").textContent =
+    gesamt === 0 ? "Keine Auffälligkeiten ✓"
+    : $("quali-filter").value === "alle" ? `${gesamt} Hinweis(e)`
+    : `${gezeigt} von ${gesamt} Hinweis(en)`;
+}
+
+function exportQualitaet() {
+  if (!letzteQualiEintraege.length) {
+    alert('Bitte zuerst „Jetzt prüfen" ausführen.');
+    return;
+  }
+  const eintraege = gefilterteQuali();
+  const headers = ["Kategorie", "Name", "Gruppe", "Details"];
+  const rows = eintraege.map((e) => [e.kategorie, e.name, e.gruppe, e.details]);
+  downloadText("qualitaetspruefung.csv", alsCsv(headers, rows));
+  status(`Qualitätsprüfung als CSV exportiert (${rows.length} Einträge).`);
 }
 
 // ── Verkabelung ──────────────────────────────────────────────────────────────
@@ -840,8 +983,10 @@ function init() {
     });
   });
 
-  // Qualitätsprüfung
+  // Qualitätsprüfung (einklappbar, Filter, CSV-Export)
   $("btn-quali").addEventListener("click", zeigeQualitaet);
+  $("quali-filter").addEventListener("change", renderQualiTabelle);
+  $("btn-quali-export").addEventListener("click", exportQualitaet);
 
   // Listen & Druck (Browser-Druckdialog, dort auch "Als PDF speichern").
   // Vor jedem Druck erscheint die Feldauswahl (wie am Desktop).
@@ -866,9 +1011,17 @@ function init() {
     druckeMitAuswahl(`Teilnehmerliste — ${k.projekt_label} ${nr}`,
                      druck.einzelOption(nr));
   });
+  $("btn-druck-einzelgruppe").addEventListener("click", () => {
+    const name = $("druck-gruppe-select").value;
+    if (!name) return;
+    const k = db.getFeldkonfig();
+    druckeMitAuswahl(`Gruppenliste — ${k.stufe_label} ${name}`,
+                     druck.einzelGruppe(name));
+  });
 
   // Nachbearbeitungsmodus
   $("btn-bearbeitungsmodus").addEventListener("click", toggleBearbeitungsmodus);
+  $("btn-aenderungen-export").addEventListener("click", exportAenderungen);
 
   // Raumplan-Tab (eigenes Modul); der Raumlisten-Import nutzt den zentralen
   // Datei-Input hier in app.js

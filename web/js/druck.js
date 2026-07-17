@@ -74,10 +74,15 @@ export function gesamtNachOptionen() {
   return gruppen;
 }
 
-/** [{titel, headers, rows}] — je Gruppe (Stufe+Zusatz) eine Liste. */
+/** [{titel, gruppe, headers, rows}] — je Gruppe (Stufe+Zusatz) eine Liste.
+ *  Bei aktivem Nachbearbeitungsmodus werden umverteilte Personen gelb
+ *  hervorgehoben; die Options-Zelle nennt zusätzlich die vorherige Option
+ *  ("… · vorher: N"). */
 export function gesamtNachGruppen() {
   const k = db.getFeldkonfig();
   const projekte = Object.fromEntries(db.getAlleProjekte().map((p) => [p.nummer, p]));
+  const modus = db.istBearbeitungsmodus();
+  const nameVon = (nr) => nr ? (projekte[nr]?.projektname ?? "?") : "";
   const nachGruppe = new Map();
   for (const t of db.getAlleTeilnehmer()) {
     const schluessel = gruppeText(t);
@@ -89,12 +94,22 @@ export function gesamtNachGruppen() {
     (a, b) => a[0].localeCompare(b[0], "de", { numeric: true }))) {
     gruppen.push({
       titel: `${k.stufe_label} ${name} (${mitglieder.length})`,
+      gruppe: name,
       headers: ["Name", `${k.projekt_label}-Nr.`, k.projekt_label],
-      rows: mitglieder.map((t) => [
-        `${t.nachname}, ${t.vorname}`,
-        t.projekt || "0",
-        t.projekt ? (projekte[t.projekt]?.projektname ?? "?") : "⚠ (keine)",
-      ]),
+      rows: mitglieder.map((t) => {
+        const optName = t.projekt ? nameVon(t.projekt) : "⚠ (keine)";
+        const geaendert = modus && t.projekt_baseline !== null
+          && t.projekt_baseline !== t.projekt;
+        if (geaendert) {
+          const vorher = t.projekt_baseline
+            ? `${t.projekt_baseline}: ${nameVon(t.projekt_baseline)}` : "keine";
+          return { klasse: "neu", zellen: [
+            `${t.nachname}, ${t.vorname}`, t.projekt || "0",
+            `${optName} · vorher: ${vorher}`,
+          ]};
+        }
+        return [`${t.nachname}, ${t.vorname}`, t.projekt || "0", optName];
+      }),
     });
   }
   return gruppen;
@@ -103,6 +118,16 @@ export function gesamtNachGruppen() {
 /** Einzelliste für eine konkrete Optionsnummer. */
 export function einzelOption(nummer) {
   return gesamtNachOptionen().filter((g) => g.titel.startsWith(`${nummer}:`));
+}
+
+/** Einzelliste für eine konkrete Gruppe (Stufe+Zusatz, z. B. „5a"). */
+export function einzelGruppe(name) {
+  return gesamtNachGruppen().filter((g) => g.gruppe === name);
+}
+
+/** Vorhandene Gruppen (Stufe+Zusatz) in sortierter Reihenfolge. */
+export function gruppenNamen() {
+  return gesamtNachGruppen().map((g) => g.gruppe);
 }
 
 /** Baut die Gruppen in den #druckbereich (ohne zu drucken — testbar). */
