@@ -365,6 +365,15 @@ tr.klickbar:hover td { background: #eef4fb; }
   padding: 3px 6px;
   font: inherit;
 }
+/* Qualitätsprüfung: Kategorie-Filter als Mehrfachauswahl (Checkboxen) */
+.quali-cat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #444;
+  white-space: nowrap;
+}
 .einklappbar > summary {
   cursor: pointer;
   font-size: 12px;

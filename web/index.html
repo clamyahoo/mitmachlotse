@@ -157,15 +157,11 @@
         Vollständigkeit, fehlende Wünsche und Mehrfachnennungen.</p>
       <div class="aktionszeile">
         <button id="btn-quali" disabled>Jetzt prüfen</button>
-        <label class="filter-label">Filter
-          <select id="quali-filter" disabled>
-            <option value="alle">Alle Kategorien</option>
-            <option value="unzulaessig">⚠ Unzulässig</option>
-            <option value="unvollstaendig">✎ Unvollständig</option>
-            <option value="keine">○ Keine Wünsche</option>
-            <option value="mehrfach">↻ Mehrfach</option>
-          </select>
-        </label>
+        <span class="filter-label">Filter:</span>
+        <label class="quali-cat"><input type="checkbox" class="quali-filter-cb" value="unzulaessig" checked disabled> ⚠ Unzulässig</label>
+        <label class="quali-cat"><input type="checkbox" class="quali-filter-cb" value="unvollstaendig" checked disabled> ✎ Unvollständig</label>
+        <label class="quali-cat"><input type="checkbox" class="quali-filter-cb" value="keine" checked disabled> ○ Keine</label>
+        <label class="quali-cat"><input type="checkbox" class="quali-filter-cb" value="mehrfach" checked disabled> ↻ Mehrfach</label>
         <button id="btn-quali-export" disabled>Export</button>
         <span id="quali-zusammenfassung" class="anzahl"></span>
       </div>

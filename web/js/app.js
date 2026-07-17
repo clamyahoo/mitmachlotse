@@ -66,7 +66,7 @@ function aktualisiereKopf() {
   $("tn-suche").disabled = !offen;
   $("druck-option-select").disabled = !offen;
   $("druck-gruppe-select").disabled = !offen;
-  $("quali-filter").disabled = !offen;
+  for (const cb of document.querySelectorAll(".quali-filter-cb")) cb.disabled = !offen;
   const darfZuteilen = offen && Kontext.darfZuteilen();
   for (const id of ["btn-algo-a", "btn-algo-b", "btn-algo-c"]) {
     $(id).disabled = !darfZuteilen;
@@ -883,10 +883,15 @@ function zeigeAenderungsuebersicht() {
 // ── Qualitätsprüfung ─────────────────────────────────────────────────────────
 let letzteQualiEintraege = [];   // Ergebnis des letzten „Jetzt prüfen"-Laufs
 
+/** Angehakte Filter-Kategorien (Mehrfachauswahl). */
+function aktiveQualiKategorien() {
+  return new Set([...document.querySelectorAll(".quali-filter-cb:checked")]
+    .map((cb) => cb.value));
+}
+
 function gefilterteQuali() {
-  const f = $("quali-filter").value;
-  return f === "alle" ? letzteQualiEintraege
-    : letzteQualiEintraege.filter((e) => e.key === f);
+  const aktiv = aktiveQualiKategorien();
+  return letzteQualiEintraege.filter((e) => aktiv.has(e.key));
 }
 
 function zeigeQualitaet() {
@@ -916,7 +921,7 @@ function renderQualiTabelle() {
   const gezeigt = eintraege.length;
   $("quali-zusammenfassung").textContent =
     gesamt === 0 ? "Keine Auffälligkeiten ✓"
-    : $("quali-filter").value === "alle" ? `${gesamt} Hinweis(e)`
+    : gezeigt === gesamt ? `${gesamt} Hinweis(e)`
     : `${gezeigt} von ${gesamt} Hinweis(en)`;
 }
 
@@ -1057,7 +1062,8 @@ function init() {
 
   // Qualitätsprüfung (einklappbar, Filter, CSV-Export)
   $("btn-quali").addEventListener("click", zeigeQualitaet);
-  $("quali-filter").addEventListener("change", renderQualiTabelle);
+  for (const cb of document.querySelectorAll(".quali-filter-cb"))
+    cb.addEventListener("change", renderQualiTabelle);
   $("btn-quali-export").addEventListener("click", exportQualitaet);
 
   // Listen & Druck (Browser-Druckdialog, dort auch "Als PDF speichern").
