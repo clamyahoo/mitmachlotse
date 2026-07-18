@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mitmach-Lotse (Web)</title>
+<link rel="icon" type="image/png" href="../img/mitmachlotse.png">
+<link rel="apple-touch-icon" href="../img/mitmachlotse.png">
 <link rel="stylesheet" href="style.css">
 <!-- sql.js (SQLite als WebAssembly) — wird sofort gebraucht (.plf lesen/schreiben) -->
 <script src="https://cdn.jsdelivr.net/npm/sql.js@1.10.2/dist/sql-wasm.min.js"></script>
@@ -11,7 +13,7 @@
 <body>
 <header>
   <div class="titelzeile">
-    <span class="app-titel">Mitmach-Lotse <small>Web</small></span>
+    <span class="app-titel"><img src="../img/mitmachlotse.png" alt="" class="app-logo">Mitmach-Lotse <small>Web</small></span>
     <span id="dateiname" class="dateiname">(keine Planungsmappe)</span>
     <span id="dirty-badge" class="dirty-badge" hidden>ungespeicherte Änderungen</span>
     <span id="bm-badge" class="bm-badge" hidden>✎ Bearbeitungsmodus aktiv</span>
@@ -176,23 +178,25 @@
 
     <div class="karte">
       <h2>Listenexport und Druck</h2>
-      <p class="hinweis">Die Gesamtlisten führen zum <b>Export-Dialog</b>
-        (Excel&nbsp;.xlsx, OpenDocument&nbsp;.ods, CSV oder <b>PDF als fertige
-        Datei</b>, dazu Titel, Fußzeilendatum und Spaltenauswahl). Bei
-        Gesamtlisten zusätzlich wählbar: <b>Seitenumbruch je Option/Gruppe</b>
-        und <b>eine Datei je Option/Gruppe</b>. Die Einzellisten gehen direkt
-        in den Druck (mit Feldauswahl).</p>
+      <p class="hinweis">Die Gesamtlisten und die Einzellisten führen zum
+        <b>Export-Dialog</b> (Excel&nbsp;.xlsx, OpenDocument&nbsp;.ods, CSV oder
+        <b>PDF als fertige Datei</b>, dazu Titel, Fußzeilendatum und
+        Spaltenauswahl). Bei Gesamtlisten zusätzlich wählbar:
+        <b>Seitenumbruch je Option/Gruppe</b> und <b>eine Datei je
+        Option/Gruppe</b>. „Drucken" öffnet die Druckansicht (mit Feldauswahl).</p>
       <div class="aktionszeile">
         <button id="btn-druck-optionen" disabled>Gesamtliste nach Optionen</button>
         <button id="btn-druck-gruppen" disabled>Gesamtliste nach Gruppen</button>
       </div>
       <div class="aktionszeile">
         <select id="druck-option-select" disabled></select>
-        <button id="btn-druck-einzeloption" disabled>Teilnehmerliste (Option) drucken</button>
+        <button id="btn-export-einzeloption" disabled>Export</button>
+        <button id="btn-druck-einzeloption" disabled>Drucken</button>
       </div>
       <div class="aktionszeile">
         <select id="druck-gruppe-select" disabled></select>
-        <button id="btn-druck-einzelgruppe" disabled>Gruppenliste (Gruppe) drucken</button>
+        <button id="btn-export-einzelgruppe" disabled>Export</button>
+        <button id="btn-druck-einzelgruppe" disabled>Drucken</button>
       </div>
     </div>
   </section>
@@ -318,6 +322,7 @@
     <button id="bsp-mappe">Beispiel-Planungsmappe laden (fertig ausgefüllt)</button>
     <button id="bsp-optionen">Beispiel-Optionsliste importieren (.ods)</button>
     <button id="bsp-teilnehmer">Beispiel-Teilnehmerliste importieren (.xlsx)</button>
+    <button id="bsp-raeume">Beispiel-Raumliste importieren (.xlsx)</button>
   </div>
   <div class="dialog-buttons">
     <button class="sekundaer" id="bsp-schliessen">Schließen</button>

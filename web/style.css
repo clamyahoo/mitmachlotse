@@ -28,6 +28,7 @@ header {
 }
 .app-titel { font-size: 17px; font-weight: bold; }
 .app-titel small { font-weight: normal; opacity: .7; }
+.app-logo { height: 1.4em; width: auto; vertical-align: -0.35em; margin-right: 6px; }
 .dateiname { opacity: .85; }
 .dirty-badge {
   background: #e67e22;
@@ -145,6 +146,10 @@ td input:focus, td select:focus {
   outline: none;
 }
 td input[type="number"] { width: 4.5em; }
+/* Zuteilungsspalte breit genug, damit die zugeteilte Option lesbar bleibt
+   (sonst wird der Select-Text abgeschnitten, siehe Handy-Ansicht). */
+td.tn-projekt-zelle { min-width: 190px; }
+td.tn-projekt-zelle select { min-width: 180px; }
 td.zahl { text-align: center; }
 td.readonly { color: #555; text-align: center; }
 td.warn { color: #b03a2e; font-weight: bold; }

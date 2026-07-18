@@ -55,7 +55,8 @@ function aktualisiereKopf() {
                     "btn-zuteilung-aufheben",
                     "btn-labels", "btn-tabellen", "btn-tn-import", "btn-opt-import",
                     "btn-quali", "btn-quali-export", "btn-druck-optionen",
-                    "btn-druck-gruppen", "btn-druck-einzeloption",
+                    "btn-druck-gruppen", "btn-export-einzeloption",
+                    "btn-druck-einzeloption", "btn-export-einzelgruppe",
                     "btn-druck-einzelgruppe", "btn-aenderungen-uebersicht", "btn-raum-neu",
                     "btn-raum-loeschen", "btn-raum-auto", "btn-raum-reset",
                     "btn-raum-druck", "btn-raum-plan-export", "btn-bearbeitungsmodus",
@@ -350,6 +351,7 @@ function renderTeilnehmer() {
     // Zuteilung: zunächst nur die gewählten Wünsche + Ausklappen auf alle
     // Optionen (Punkt: fixe Zuweisung wie am Desktop).
     const tdProjekt = document.createElement("td");
+    tdProjekt.className = "tn-projekt-zelle";
     const sel = document.createElement("select");
     sel.disabled = !Kontext.darfZuteilen();
     fuelleProjektSelect(sel, t, projekte, projekteDict, false);
@@ -1020,6 +1022,12 @@ function init() {
       "../beispieldaten/teilnehmerliste_beispiel.xlsx",
       "teilnehmerliste_beispiel.xlsx");
   });
+  $("bsp-raeume").addEventListener("click", () => {
+    $("dlg-beispiel").close();
+    importiereBeispielDatei("raeume",
+      "../beispieldaten/raumliste_beispiel.xlsx",
+      "raumliste_beispiel.xlsx");
+  });
 
   // Hinweis-Popup (unzulässiger Wunsch u. a.)
   $("hinweis-ok").addEventListener("click", () => $("dlg-hinweis").close());
@@ -1094,12 +1102,26 @@ function init() {
       gruppenoptionen: true, einheit: "Gruppe", status,
     });
   });
+  $("btn-export-einzeloption").addEventListener("click", () => {
+    const nr = parseInt($("druck-option-select").value, 10);
+    if (!nr) return;
+    const gruppen = druck.einzelOption(nr);
+    if (!gruppen.length) { alert("Keine Daten vorhanden."); return; }
+    zeigeExportDialog({ titel: gruppen[0].titel, dateiBasis: `option_${nr}`, gruppen, status });
+  });
   $("btn-druck-einzeloption").addEventListener("click", () => {
     const nr = parseInt($("druck-option-select").value, 10);
     if (!nr) return;
     const k = db.getFeldkonfig();
     druckeMitAuswahl(`Teilnehmerliste — ${k.projekt_label} ${nr}`,
                      druck.einzelOption(nr));
+  });
+  $("btn-export-einzelgruppe").addEventListener("click", () => {
+    const name = $("druck-gruppe-select").value;
+    if (!name) return;
+    const gruppen = druck.einzelGruppe(name);
+    if (!gruppen.length) { alert("Keine Daten vorhanden."); return; }
+    zeigeExportDialog({ titel: gruppen[0].titel, dateiBasis: `gruppe_${name}`, gruppen, status });
   });
   $("btn-druck-einzelgruppe").addEventListener("click", () => {
     const name = $("druck-gruppe-select").value;
