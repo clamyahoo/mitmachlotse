@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mitmach-Lotse (Web)</title>
+<link rel="icon" type="image/png" href="../img/mitmachlotse.png">
+<link rel="apple-touch-icon" href="../img/mitmachlotse.png">
+<link rel="stylesheet" href="style.css">
+<!-- sql.js (SQLite als WebAssembly) — wird sofort gebraucht (.plf lesen/schreiben) -->
+<script src="https://cdn.jsdelivr.net/npm/sql.js@1.10.2/dist/sql-wasm.min.js"></script>
+</head>
+<body>
+<header>
+  <div class="titelzeile">
+    <span class="app-titel"><img src="../img/mitmachlotse.png" alt="" class="app-logo">Mitmach-Lotse <small>Web</small></span>
+    <span id="dateiname" class="dateiname">(keine Planungsmappe)</span>
+    <span id="dirty-badge" class="dirty-badge" hidden>ungespeicherte Änderungen</span>
+    <span id="bm-badge" class="bm-badge" hidden>✎ Bearbeitungsmodus aktiv</span>
+    <span id="kontext-badge" class="kontext-badge" title="Betriebsart: lokal, ohne Anmeldung. Alle Daten bleiben auf diesem Gerät."></span>
+  </div>
+  <div class="toolbar">
+    <button id="btn-neu">Neue Planungsmappe</button>
+    <button id="btn-oeffnen">Öffnen (.plf)</button>
+    <button id="btn-speichern" disabled>Speichern</button>
+    <button id="btn-speichern-als" disabled>Speichern als …</button>
+    <button id="btn-labels" disabled>Spaltenbezeichnungen anpassen …</button>
+    <button id="btn-tabellen" disabled>Tabellen-Assistent …</button>
+    <button id="btn-beispiel">Beispieldaten ausprobieren …</button>
+    <input type="file" id="datei-input" accept=".plf,.db,.sqlite" hidden>
+    <input type="file" id="import-datei" accept=".csv,.txt,.xlsx,.xls,.ods" hidden>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="tab aktiv" data-tab="teilnehmer">Teilnehmer/innen</button>
+  <button class="tab" data-tab="optionen" id="tab-btn-optionen">Optionen</button>
+  <button class="tab" data-tab="raumplan">Raumplan</button>
+  <button class="tab" data-tab="zuteilung">Zuteilung &amp; Auswertung</button>
+</nav>
+
+<main>
+  <!-- ── Tab 1: Teilnehmer ── -->
+  <section id="tab-teilnehmer" class="tab-inhalt aktiv">
+    <div class="aktionszeile">
+      <button id="btn-tn-neu" disabled>+ Teilnehmer/in</button>
+      <button id="btn-tn-loeschen" disabled>✗ Markierte löschen</button>
+      <button id="btn-tn-import" disabled>Importieren (CSV/xlsx/ods) …</button>
+      <input type="search" id="tn-suche" placeholder="Suchen (Name, Gruppe) …" disabled>
+      <span id="tn-anzahl" class="anzahl"></span>
+    </div>
+    <div class="tabellen-scroll">
+      <table id="tn-tabelle"><thead></thead><tbody></tbody></table>
+    </div>
+  </section>
+
+  <!-- ── Tab 2: Optionen ── -->
+  <section id="tab-optionen" class="tab-inhalt">
+    <div class="aktionszeile">
+      <button id="btn-opt-neu" disabled>+ Option</button>
+      <button id="btn-opt-loeschen" disabled>✗ Markierte löschen</button>
+      <button id="btn-opt-import" disabled>Importieren (CSV/xlsx/ods) …</button>
+      <span id="opt-anzahl" class="anzahl"></span>
+    </div>
+    <div class="tabellen-scroll">
+      <table id="opt-tabelle"><thead></thead><tbody></tbody></table>
+    </div>
+  </section>
+
+  <!-- ── Tab 3: Raumplan ── -->
+  <section id="tab-raumplan" class="tab-inhalt">
+    <div class="karte">
+      <h2>Raumliste</h2>
+      <div class="aktionszeile">
+        <button id="btn-raum-neu" disabled>+ Raum</button>
+        <button id="btn-raum-loeschen" disabled>✗ Markierte löschen</button>
+        <button id="btn-raum-import" disabled>Importieren …</button>
+        <button id="btn-raum-export" disabled>Export</button>
+        <span id="raum-anzahl" class="anzahl"></span>
+      </div>
+      <div class="tabellen-scroll resizable">
+        <table id="raum-tabelle"><thead></thead><tbody></tbody></table>
+      </div>
+    </div>
+
+    <div class="karte">
+      <h2>Raumzuordnung</h2>
+      <p class="hinweis">Je Option einen Raum und eine Zeit zuordnen. Derselbe
+        Raum darf mehrfach genutzt werden, wenn beide Optionen unterschiedliche
+        Zeiten eingetragen haben — sonst fragt die App, ob die Mehrfachbelegung
+        erzwungen werden soll. Konflikte werden rot (Doppelbelegung) bzw.
+        orange (Kapazität) markiert. <b>Fix</b> schützt eine Zuordnung vor der
+        Automatik.</p>
+      <div class="aktionszeile">
+        <button id="btn-raum-auto" disabled>Räume automatisch zuweisen</button>
+        <button id="btn-raum-reset" disabled>Raumzuteilung aufheben</button>
+        <button id="btn-raum-plan-export" disabled>Export</button>
+        <button id="btn-raum-druck" disabled>Raumplan drucken</button>
+      </div>
+      <div id="raum-solver-status" class="solver-status" hidden></div>
+      <div class="tabellen-scroll resizable">
+        <table id="raumplan-tabelle"><thead></thead><tbody></tbody></table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Tab 4: Zuteilung & Auswertung ── -->
+  <section id="tab-zuteilung" class="tab-inhalt">
+    <div class="karte" id="karte-zuteilen">
+      <h2>Automatisch zuweisen</h2>
+      <p class="hinweis">Nutzt exakt dieselben, unveränderten Algorithmen wie die
+        Desktop-App (Min-Cost-Max-Flow). Beim ersten Lauf wird einmalig die
+        Python-Umgebung geladen (~10&nbsp;MB) — danach ist sie sofort verfügbar.</p>
+      <div class="aktionszeile">
+        <button id="btn-algo-a" disabled>Algorithmus A (Wunsch-Priorität)</button>
+        <button id="btn-algo-b" disabled>Algorithmus B (Mindest-TN-Priorität)</button>
+        <button id="btn-algo-c" disabled>Algorithmus C (Alle versorgen)</button>
+        <button id="btn-zuteilung-aufheben" disabled>Automatische Zuweisung aufheben</button>
+      </div>
+      <div id="solver-status" class="solver-status" hidden></div>
+    </div>
+
+    <div class="karte">
+      <h2>Wunschstatistik</h2>
+      <table id="statistik-tabelle" class="kompakt"><thead></thead><tbody></tbody></table>
+    </div>
+
+    <div class="karte">
+      <h2 id="uebersicht-titel">Belegungsübersicht</h2>
+      <p class="hinweis">Klick auf eine Zeile öffnet die <b>Wunschdetails</b>:
+        wie oft die Option je Wunschrang gewünscht wurde, mit welchem Rang die
+        Zugeteilten sie bekommen haben, samt Wunschauswertungs- und
+        Teilnehmerliste (je exportierbar). Rahmenhöhe unten rechts verstellbar.</p>
+      <div class="tabellen-scroll resizable">
+        <table id="uebersicht-tabelle" class="kompakt"><thead></thead><tbody></tbody></table>
+      </div>
+    </div>
+
+    <div class="karte">
+      <h2>Nachbearbeitungsmodus</h2>
+      <p class="hinweis">Hält den aktuellen Zuteilungsstand als Basis fest.
+        Solange der Modus aktiv ist, werden alle Umverteilungen sichtbar
+        gemacht — in der Teilnehmertabelle, in der Übersicht unten und in den
+        gedruckten Gruppenlisten (Neuzugänge gelb, Abgänge durchgestrichen).
+        Der Modus wird mit der Planungsmappe gespeichert.
+        <b>Ausschalten</b> macht den aktuellen Stand endgültig fest.</p>
+      <div class="aktionszeile">
+        <button id="btn-bearbeitungsmodus" disabled>Bearbeitungsmodus Ein</button>
+        <button id="btn-aenderungen-uebersicht" disabled>Übersicht der Änderungen</button>
+        <span id="bm-anzahl" class="anzahl"></span>
+      </div>
+      <div class="tabellen-scroll">
+        <table id="aenderungen-tabelle"><thead></thead><tbody></tbody></table>
+      </div>
+    </div>
+
+    <div class="karte">
+      <h2>Qualitätsprüfung Wunscheingaben</h2>
+      <p class="hinweis">Prüft alle Wunscheingaben auf Zulässigkeit (Bereich),
+        Vollständigkeit, fehlende Wünsche und Mehrfachnennungen.</p>
+      <div class="aktionszeile">
+        <button id="btn-quali" disabled>Jetzt prüfen</button>
+        <span class="filter-label">Filter:</span>
+        <label class="quali-cat"><input type="checkbox" class="quali-filter-cb" value="unzulaessig" checked disabled> ⚠ Unzulässig</label>
+        <label class="quali-cat"><input type="checkbox" class="quali-filter-cb" value="unvollstaendig" checked disabled> ✎ Unvollständig</label>
+        <label class="quali-cat"><input type="checkbox" class="quali-filter-cb" value="keine" checked disabled> ○ Keine</label>
+        <label class="quali-cat"><input type="checkbox" class="quali-filter-cb" value="mehrfach" checked disabled> ↻ Mehrfach</label>
+        <button id="btn-quali-export" disabled>Export</button>
+        <span id="quali-zusammenfassung" class="anzahl"></span>
+      </div>
+      <details id="quali-details" class="einklappbar" open>
+        <summary>Ergebnisliste ein-/ausklappen</summary>
+        <div class="tabellen-scroll">
+          <table id="quali-tabelle"><thead></thead><tbody></tbody></table>
+        </div>
+      </details>
+    </div>
+
+    <div class="karte">
+      <h2>Listenexport und Druck</h2>
+      <p class="hinweis">Die Gesamtlisten und die Einzellisten führen zum
+        <b>Export-Dialog</b> (Excel&nbsp;.xlsx, OpenDocument&nbsp;.ods, CSV oder
+        <b>PDF als fertige Datei</b>, dazu Titel, Fußzeilendatum und
+        Spaltenauswahl). Bei Gesamtlisten zusätzlich wählbar:
+        <b>Seitenumbruch je Option/Gruppe</b> und <b>eine Datei je
+        Option/Gruppe</b>. „Drucken" öffnet die Druckansicht (mit Feldauswahl).</p>
+      <div class="aktionszeile">
+        <button id="btn-druck-optionen" disabled>Gesamtliste nach Optionen</button>
+        <button id="btn-druck-gruppen" disabled>Gesamtliste nach Gruppen</button>
+      </div>
+      <div class="aktionszeile">
+        <select id="druck-option-select" disabled></select>
+        <button id="btn-export-einzeloption" disabled>Export</button>
+        <button id="btn-druck-einzeloption" disabled>Drucken</button>
+      </div>
+      <div class="aktionszeile">
+        <select id="druck-gruppe-select" disabled></select>
+        <button id="btn-export-einzelgruppe" disabled>Export</button>
+        <button id="btn-druck-einzelgruppe" disabled>Drucken</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer><span id="status">Bereit.</span></footer>
+
+<!-- ── Dialog: Spaltenbezeichnungen anpassen ── -->
+<dialog id="dlg-labels">
+  <h2>Spaltenbezeichnungen anpassen</h2>
+  <p class="hinweis">Die Begriffe erscheinen überall in der Oberfläche, in
+    Listen und Ausdrucken — z.&nbsp;B. „Option", „Projekt", „Kurs" oder
+    „Workshop". Sie werden in der Planungsmappe gespeichert und gelten auch
+    in der Desktop-App.</p>
+  <div class="formzeile">
+    <label for="lbl-projekt">Bezeichnung der Angebote</label>
+    <input type="text" id="lbl-projekt" placeholder="z. B. Option, Projekt, Kurs">
+  </div>
+  <div class="formzeile">
+    <label for="lbl-stufe">Bezeichnung Gruppenbereich</label>
+    <input type="text" id="lbl-stufe" placeholder="z. B. Jgst., Klasse, Jahrgang">
+  </div>
+  <div class="formzeile">
+    <label for="lbl-zusatz">Bezeichnung Gruppenzusatz</label>
+    <input type="text" id="lbl-zusatz" placeholder="z. B. Klassenzusatz, Untergruppe">
+  </div>
+  <div class="formzeile">
+    <label for="lbl-leitung">Leitung / Ansprechperson (leer = Spalte ausgeblendet)</label>
+    <input type="text" id="lbl-leitung" placeholder="z. B. Leitung, Lehrkraft">
+  </div>
+  <div class="formzeile">
+    <label for="lbl-maxw">Anzahl Wunschränge</label>
+    <select id="lbl-maxw">
+      <option>1</option><option>2</option><option>3</option>
+      <option>4</option><option>5</option>
+    </select>
+  </div>
+
+  <details class="lbl-extras">
+    <summary>Zusatzfelder (optional)</summary>
+    <p class="hinweis">Benannte Zusatzfelder erscheinen als eigene Spalten in
+      den Tabellen, im Import und im CSV-Export. Leer lassen = ausgeblendet.</p>
+    <div class="formzeile">
+      <label for="lbl-tn-extra1">Zusatzfeld Teilnehmer/in 1</label>
+      <input type="text" id="lbl-tn-extra1" placeholder="z. B. E-Mail, Bemerkung">
+    </div>
+    <div class="formzeile">
+      <label for="lbl-tn-extra2">Zusatzfeld Teilnehmer/in 2</label>
+      <input type="text" id="lbl-tn-extra2">
+    </div>
+    <div class="formzeile">
+      <label for="lbl-tn-extra3">Zusatzfeld Teilnehmer/in 3</label>
+      <input type="text" id="lbl-tn-extra3">
+    </div>
+    <div class="formzeile">
+      <label for="lbl-opt-extra1">Zusatzfeld Option 1</label>
+      <input type="text" id="lbl-opt-extra1" placeholder="z. B. Material, Raumbedarf">
+    </div>
+    <div class="formzeile">
+      <label for="lbl-opt-extra2">Zusatzfeld Option 2</label>
+      <input type="text" id="lbl-opt-extra2">
+    </div>
+    <div class="formzeile">
+      <label for="lbl-opt-extra3">Zusatzfeld Option 3</label>
+      <input type="text" id="lbl-opt-extra3">
+    </div>
+    <div class="formzeile">
+      <label for="lbl-raumzuordnung">Zusatzfeld Raumzuordnung</label>
+      <input type="text" id="lbl-raumzuordnung" placeholder="z. B. Etage, Gebäude, Ausstattung">
+    </div>
+  </details>
+
+  <div class="dialog-buttons">
+    <button class="sekundaer" id="lbl-abbrechen">Abbrechen</button>
+    <button id="lbl-ok">Übernehmen</button>
+  </div>
+</dialog>
+
+<!-- ── Dialog: CSV-Import (Inhalt wird dynamisch aufgebaut) ── -->
+<dialog id="dlg-import"></dialog>
+
+<!-- ── Dialog: Feldauswahl vor Druck (Inhalt dynamisch) ── -->
+<dialog id="dlg-spalten"></dialog>
+
+<!-- ── Dialog: Einrichtungsassistent (Inhalt dynamisch, mehrstufig) ── -->
+<dialog id="dlg-start" class="assistent"></dialog>
+
+<!-- ── Dialog: Tabellen-Export-/Importassistent (Inhalt dynamisch) ── -->
+<dialog id="dlg-tabellen" class="assistent"></dialog>
+
+<!-- ── Dialog: Wunschdetails zu einer Option (Inhalt dynamisch) ── -->
+<dialog id="dlg-projektdetails" class="detailfenster"></dialog>
+
+<!-- ── Dialog: Listenfenster (Wunschauswertung/Teilnehmerliste, dynamisch) ── -->
+<dialog id="dlg-liste" class="detailfenster"></dialog>
+
+<!-- ── Dialog: Export einer Fensterliste (Format/Kopfzeile/Datum/Spalten) ── -->
+<dialog id="dlg-export"></dialog>
+
+<!-- ── Dialog: Fix-Zuweisung aus einem Listenfenster ── -->
+<dialog id="dlg-zuweisen">
+  <h2 id="zuweisen-titel">Fix zuweisen</h2>
+  <p class="hinweis">Angeboten werden zunächst die gewählten Wünsche; über
+    „➕ weitere Optionen anzeigen" lässt sich die komplette Liste einblenden.
+    Eine feste Zuweisung wird bei der automatischen Zuteilung nicht verändert.</p>
+  <div class="formzeile">
+    <label for="zuweisen-select">Zuteilung</label>
+    <select id="zuweisen-select"></select>
+  </div>
+  <div class="dialog-buttons">
+    <button class="sekundaer" id="zuweisen-abbrechen">Abbrechen</button>
+    <button id="zuweisen-ok">Zuweisen</button>
+  </div>
+</dialog>
+
+<!-- ── Dialog: Beispieldaten auswählen ── -->
+<dialog id="dlg-beispiel">
+  <h2>Beispieldaten ausprobieren</h2>
+  <p class="hinweis">Zum Kennenlernen — nichts davon verändert eigene Dateien.
+    Die Planungsmappe ist fertig ausgefüllt; die Listen führen durch den
+    normalen Import (mit Spaltenzuordnung).</p>
+  <div class="start-buttons">
+    <button id="bsp-mappe">Beispiel-Planungsmappe laden (fertig ausgefüllt)</button>
+    <button id="bsp-optionen">Beispiel-Optionsliste importieren (.ods)</button>
+    <button id="bsp-teilnehmer">Beispiel-Teilnehmerliste importieren (.xlsx)</button>
+    <button id="bsp-raeume">Beispiel-Raumliste importieren (.xlsx)</button>
+  </div>
+  <div class="dialog-buttons">
+    <button class="sekundaer" id="bsp-schliessen">Schließen</button>
+  </div>
+</dialog>
+
+<!-- ── Dialog: Hinweis (Warnung, z. B. unzulässiger Wunsch) ── -->
+<dialog id="dlg-hinweis">
+  <div class="hinweis-kopf">
+    <span class="hinweis-icon">⚠</span>
+    <h2 id="hinweis-titel">Hinweis</h2>
+  </div>
+  <p id="hinweis-text"></p>
+  <div class="dialog-buttons">
+    <button id="hinweis-ok">OK</button>
+  </div>
+</dialog>
+
+<!-- ── Druckbereich (nur in der Druckansicht sichtbar) ── -->
+<div id="druckbereich"></div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

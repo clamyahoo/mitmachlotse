@@ -1,0 +1,504 @@
+/* Mitmach-Lotse Web — Optik angelehnt an die Desktop-App (Fusion-Stylesheet) */
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: Arial, "Segoe UI", sans-serif;
+  font-size: 13px;
+  background: #f5f5f5;
+  color: #222;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* ── Kopf ── */
+header {
+  background: #2c3e50;
+  color: white;
+  padding: 8px 14px 10px;
+}
+.titelzeile {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.app-titel { font-size: 17px; font-weight: bold; }
+.app-titel small { font-weight: normal; opacity: .7; }
+.app-logo { height: 1.4em; width: auto; vertical-align: -0.35em; margin-right: 6px; }
+.dateiname { opacity: .85; }
+.dirty-badge {
+  background: #e67e22;
+  color: white;
+  border-radius: 3px;
+  padding: 1px 8px;
+  font-size: 11px;
+}
+.bm-badge {
+  background: #f1c40f;
+  color: #4a3b00;
+  border-radius: 3px;
+  padding: 1px 8px;
+  font-size: 11px;
+}
+.kontext-badge {
+  margin-left: auto;
+  background: #34495e;
+  border-radius: 3px;
+  padding: 1px 8px;
+  font-size: 11px;
+  opacity: .9;
+}
+
+.toolbar { display: flex; gap: 8px; flex-wrap: wrap; }
+
+button {
+  background: #2980b9;
+  color: white;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+button:hover:not(:disabled)  { background: #3498db; }
+button:active:not(:disabled) { background: #1c6ea4; }
+button:disabled { background: #95a5a6; cursor: not-allowed; opacity: .7; }
+
+/* ── Tabs ── */
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 8px 14px 0;
+  background: #f5f5f5;
+  border-bottom: 1px solid #ccc;
+  flex-wrap: wrap;   /* auf schmalen Schirmen umbrechen statt Seite zu schieben */
+}
+.tab {
+  background: #dde3ea;
+  color: #2c3e50;
+  border-radius: 4px 4px 0 0;
+  padding: 6px 16px;
+}
+.tab:hover:not(:disabled) { background: #cdd6e0; }
+.tab.aktiv {
+  background: white;
+  font-weight: bold;
+  border: 1px solid #ccc;
+  border-bottom: 1px solid white;
+  margin-bottom: -1px;
+}
+
+/* ── Inhalt ── */
+/* Auf sehr breiten Schirmen die Inhaltsbreite begrenzen und zentrieren
+   (Kopf/Tabs bleiben full-width). Breite Datentabellen scrollen bei Bedarf
+   weiterhin in ihrem eigenen Container. */
+main { flex: 1; padding: 12px 14px; max-width: 1500px; margin: 0 auto; width: 100%; }
+.tab-inhalt { display: none; }
+.tab-inhalt.aktiv { display: block; }
+
+.aktionszeile {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.aktionszeile input[type="search"] {
+  border: 1px solid #bbb;
+  border-radius: 4px;
+  padding: 5px 8px;
+  min-width: 220px;
+}
+.anzahl { color: #666; margin-left: auto; }
+
+.tabellen-scroll { overflow-x: auto; background: white; border: 1px solid #ccc; }
+
+table { border-collapse: collapse; width: 100%; background: white; }
+th {
+  background: #2c3e50;
+  color: white;
+  padding: 6px 8px;
+  text-align: left;
+  font-size: 12px;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+}
+td { padding: 2px 4px; border-bottom: 1px solid #e0e0e0; }
+tbody tr:nth-child(even) { background: #f0f4f8; }
+tbody tr.markiert { outline: 2px solid #2980b9; outline-offset: -2px; }
+
+td input[type="text"], td input[type="number"], td select {
+  width: 100%;
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 4px 4px;
+  font: inherit;
+  border-radius: 3px;
+}
+td input:focus, td select:focus {
+  border-color: #2980b9;
+  background: white;
+  outline: none;
+}
+td input[type="number"] { width: 4.5em; }
+/* Zuteilungsspalte breit genug, damit die zugeteilte Option lesbar bleibt
+   (sonst wird der Select-Text abgeschnitten, siehe Handy-Ansicht). */
+td.tn-projekt-zelle { min-width: 190px; }
+td.tn-projekt-zelle select { min-width: 180px; }
+td.zahl { text-align: center; }
+td.readonly { color: #555; text-align: center; }
+td.warn { color: #b03a2e; font-weight: bold; }
+
+table.kompakt { max-width: 720px; }
+table.kompakt td { padding: 5px 8px; }
+
+/* ── Karten (Tab 3) ── */
+.karte {
+  background: white;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+.karte h2 { margin: 0 0 8px; font-size: 14px; color: #2c3e50; }
+.hinweis { color: #666; font-size: 12px; margin: 0 0 10px; }
+
+.solver-status {
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: #eaf2f8;
+  border: 1px solid #aed6f1;
+  border-radius: 4px;
+  white-space: pre-line;
+}
+.solver-status.fehler { background: #fdecea; border-color: #f5b7b1; }
+
+/* ── Fuß ── */
+footer {
+  background: #ecf0f1;
+  color: #555;
+  padding: 5px 14px;
+  font-size: 12px;
+  border-top: 1px solid #ddd;
+}
+
+/* ── Dialoge ── */
+dialog {
+  border: 1px solid #999;
+  border-radius: 6px;
+  padding: 16px 18px;
+  max-width: 760px;
+  width: 92%;
+  font-size: 13px;
+}
+dialog::backdrop { background: rgba(0, 0, 0, .45); }
+dialog h2 { margin-top: 0; font-size: 15px; color: #2c3e50; }
+.formzeile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.formzeile label { min-width: 280px; }
+.formzeile input[type="text"], .formzeile select {
+  flex: 1;
+  border: 1px solid #bbb;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font: inherit;
+}
+.dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+button.sekundaer { background: #7f8c8d; }
+button.sekundaer:hover:not(:disabled) { background: #95a5a6; }
+
+/* Bezeichnungen-Dialog: ausklappbare Zusatzfelder */
+.lbl-extras { margin: 6px 0 2px; }
+.lbl-extras summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #2c3e50;
+  padding: 4px 0;
+}
+.lbl-extras[open] { border-top: 1px solid #eee; padding-top: 8px; }
+
+/* Import-Dialog: Zuordnungstabelle + Mini-Vorschau */
+.map-tabelle { width: 100%; border-collapse: collapse; margin: 8px 0; }
+.map-tabelle th, .map-tabelle td {
+  padding: 3px 6px;
+  border-bottom: 1px solid #eee;
+  text-align: left;
+  background: white;
+  color: #222;
+  position: static;
+}
+.map-tabelle select {
+  width: 100%;
+  border: 1px solid #bbb;
+  border-radius: 4px;
+  padding: 3px 6px;
+  font: inherit;
+}
+.vorschau-klein {
+  max-height: 150px;
+  overflow: auto;
+  border: 1px solid #ddd;
+  margin-top: 8px;
+}
+.vorschau-klein table { font-size: 11px; }
+.vorschau-klein th { position: static; padding: 3px 6px; }
+.vorschau-klein td { padding: 2px 6px; white-space: nowrap; }
+
+/* Qualitätsprüfung */
+#quali-tabelle td.icon { width: 2em; text-align: center; }
+
+/* Beispieldaten-Auswahl (und andere gestapelte Buttonlisten) */
+.start-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0;
+}
+.start-buttons button { text-align: left; }
+
+/* Hinweis-Popup (Warnung, z. B. unzulässiger Wunsch) */
+#dlg-hinweis { max-width: 460px; }
+.hinweis-kopf { display: flex; align-items: center; gap: 10px; }
+.hinweis-kopf h2 { margin: 0; }
+.hinweis-icon { font-size: 26px; }
+#hinweis-text { white-space: pre-line; line-height: 1.5; margin: 12px 0; }
+
+/* Vergrößerbare Tabellenrahmen (Raumliste + Raumzuordnung): Anfasser unten
+   rechts zum Hoch-/Runterziehen des unteren Rands. */
+.tabellen-scroll.resizable {
+  resize: vertical;
+  overflow: auto;
+  min-height: 120px;
+  height: 260px;
+}
+
+/* Mehrstufige Assistenten (Einrichtung + Tabellen-Workflow) */
+.assistent { max-width: 620px; }
+.assi-schritt {
+  text-align: right;
+  font-size: 11px;
+  color: #888;
+  min-height: 14px;
+}
+.assi-body { min-height: 180px; }
+.assi-body p { margin: 0 0 10px; line-height: 1.45; }
+.assi-body button { margin: 4px 0; }
+.assi-logo { display: block; margin: 0 auto 6px; height: 72px; }
+.assi-titel { font-size: 20px; font-weight: bold; color: #1F3864; }
+.assi-zentriert { text-align: center; }
+.assi-nav {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 16px;
+  border-top: 1px solid #eee;
+  padding-top: 12px;
+}
+.assi-nav-links, .assi-nav-rechts { display: flex; gap: 8px; }
+.assi-wahl { display: flex; flex-direction: column; gap: 8px; margin: 8px 0; }
+.assi-radio {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+.assi-radio:hover { background: #f4f8fc; }
+.assi-radio input { margin-top: 3px; }
+.assi-status {
+  font-size: 12px;
+  color: #777;
+  font-style: italic;
+  margin-top: 6px;
+}
+.assi-status.ok { color: #218838; font-style: normal; font-weight: 600; }
+.assi-praxis {
+  background: #eaf2fb;
+  padding: 8px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+/* Feldauswahl-Dialog */
+.spalten-liste {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 10px 0;
+  max-height: 300px;
+  overflow: auto;
+}
+.spalten-liste label { display: flex; gap: 8px; align-items: center; }
+
+/* Raumplan: Konfliktfärbung (rot = Doppelbelegung, orange = Kapazität) */
+#raumplan-tabelle tr.konflikt-doppel td { background: #f8d0d0; }
+#raumplan-tabelle tr.konflikt-kap td    { background: #ffe3b3; }
+
+/* Fortlaufende Wunschprüfung: unzulässiger Wunsch rot markiert */
+td.wunsch-unzulaessig input {
+  background: #ffd9d9;
+  border-color: #e06666;
+}
+
+/* Klickbare Zeilen (Belegungsübersicht → Wunschdetails; Detailtabellen) */
+tr.klickbar { cursor: pointer; }
+tr.klickbar:hover td { background: #eef4fb; }
+
+/* Qualitätsprüfung: Filter + einklappbare Ergebnisliste */
+.filter-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #555;
+}
+.filter-label select {
+  border: 1px solid #bbb;
+  border-radius: 4px;
+  padding: 3px 6px;
+  font: inherit;
+}
+/* Qualitätsprüfung: Kategorie-Filter als Mehrfachauswahl (Checkboxen) */
+.quali-cat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #444;
+  white-space: nowrap;
+}
+.einklappbar > summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: #2c3e50;
+  padding: 4px 0;
+  user-select: none;
+}
+
+/* Listenfenster: anklickbare/ausgewählte Zeilen (für „fix zuweisen") */
+#dlg-liste tbody tr.waehlbar { cursor: pointer; }
+#dlg-liste tbody tr.waehlbar:hover td { background: #eef4fb; }
+#dlg-liste tbody tr.markiert td { background: #d6e6f5; }
+
+/* Export-Dialog der Listenfenster */
+#dlg-export { max-width: 480px; }
+.export-gruppe {
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  padding: 8px 10px;
+  margin: 8px 0;
+}
+.export-gruppe legend { font-weight: 600; color: #2c3e50; padding: 0 4px; }
+.export-radio, .export-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+}
+/* Kopfzeile als Block (Label über Eingabefeld), Feld volle Breite ohne
+   Überlauf — behebt das Abschneiden im Export-Dialog. */
+.export-kopf { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; }
+.export-kopf input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #bbb;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font: inherit;
+}
+
+/* Wunschdetail- und Listenfenster */
+.detailfenster { max-width: 640px; }
+.detail-ueberschrift {
+  font-size: 13px;
+  margin: 14px 0 4px;
+  color: #2c3e50;
+}
+.liste-scroll { max-height: 55vh; }
+
+/* Nachbearbeitungsmodus: geänderte Zuteilung (gelb wie Desktop #fff3b0) */
+td.bm-geaendert { background: #fff3b0; }
+.bm-vorher {
+  display: block;
+  font-size: 11px;
+  color: #6b5b00;
+}
+.bm-vorher s { opacity: .75; }
+
+/* ── Responsive: Handys / schmale Fenster ── */
+@media (max-width: 600px) {
+  main { padding: 8px; }
+  header { padding: 8px 10px; }
+  .tabs { padding: 8px 8px 0; }
+  .tab { padding: 8px 12px; }
+  .karte { padding: 10px; }
+
+  /* Formularzeilen stapeln: Label über dem Eingabefeld statt daneben */
+  .formzeile { flex-direction: column; align-items: stretch; gap: 4px; }
+  .formzeile label { min-width: 0; }
+
+  /* Größere Touch-Ziele (Fingerbedienung) */
+  button { padding: 10px 14px; font-size: 14px; min-height: 40px; }
+  .tab { min-height: 40px; }
+  .aktionszeile { gap: 6px; }
+  .aktionszeile input[type="search"] { min-width: 0; flex: 1 1 100%; }
+
+  /* iOS/Safari zoomt beim Fokus, wenn Felder < 16px sind → auf 16px setzen.
+     Muss die spezifischeren Basisregeln (Tabelle, Formzeile, Export) treffen. */
+  input, select, textarea,
+  .formzeile input[type="text"], .formzeile select,
+  .export-kopf input, .map-tabelle select, .filter-label select,
+  td input[type="text"], td input[type="number"], td select { font-size: 16px; }
+  td input[type="number"] { width: 5.5em; }
+}
+
+/* ── Druckbereich ── */
+#druckbereich { display: none; }
+@media print {
+  body > *:not(#druckbereich) { display: none !important; }
+  body { background: white; }
+  #druckbereich { display: block; }
+  #druckbereich h1 { font-size: 16pt; color: #1F3864; margin-bottom: 2mm; }
+  #druckbereich .druckdatum { font-size: 9pt; color: #555; margin-bottom: 6mm; }
+  #druckbereich section { break-before: page; }
+  #druckbereich section:first-of-type { break-before: auto; }
+  #druckbereich h2 { font-size: 13pt; margin: 4mm 0 2mm; }
+  #druckbereich table { width: 100%; border-collapse: collapse; font-size: 10pt; }
+  #druckbereich th {
+    text-align: left;
+    border-bottom: 1.5pt solid #333;
+    padding: 1.5mm 2mm;
+    background: none;
+    color: #000;
+    position: static;
+  }
+  #druckbereich td { border-bottom: .5pt solid #999; padding: 1mm 2mm; }
+  /* Nachbearbeitungsmodus in Drucklisten: Neuzugänge gelb, Abgänge
+     durchgestrichen. Farbdruck erzwingen, sonst filtert der Browser die
+     Hintergründe beim Drucken heraus. */
+  #druckbereich tr.neu td {
+    background: #fff3b0 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  #druckbereich tr.geist td {
+    color: #777;
+    text-decoration: line-through;
+  }
+}
