@@ -1587,6 +1587,10 @@ class MainWindow(QMainWindow):
         a_bsp_pr.triggered.connect(self._importiere_beispiel_projekte)
         m_beispiel.addAction(a_bsp_pr)
 
+        a_bsp_ra = QAction("Beispiel-Raumliste importieren", self)
+        a_bsp_ra.triggered.connect(self._importiere_beispiel_raeume)
+        m_beispiel.addAction(a_bsp_ra)
+
         m_hilfe.addSeparator()
 
         a_ueber = QAction("Über Mitmach-Lotse", self)
@@ -1832,6 +1836,16 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Beispieldaten", "Beispieldatei wurde nicht gefunden.")
             return
         dlg = ImportDialog("projekte", self, vorbelegter_pfad=str(quelle))
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self._refresh_all()
+
+    def _importiere_beispiel_raeume(self):
+        """Hilfe → Beispieldaten ausprobieren → Beispiel-Raumliste importieren."""
+        quelle = self.BEISPIEL_ORDNER / "raumliste_beispiel.xlsx"
+        if not quelle.exists():
+            QMessageBox.warning(self, "Beispieldaten", "Beispieldatei wurde nicht gefunden.")
+            return
+        dlg = ImportDialog("raeume", self, vorbelegter_pfad=str(quelle))
         if dlg.exec() == QDialog.DialogCode.Accepted:
             self._refresh_all()
 
