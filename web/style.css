@@ -74,6 +74,7 @@ button:disabled { background: #95a5a6; cursor: not-allowed; opacity: .7; }
   padding: 8px 14px 0;
   background: #f5f5f5;
   border-bottom: 1px solid #ccc;
+  flex-wrap: wrap;   /* auf schmalen Schirmen umbrechen statt Seite zu schieben */
 }
 .tab {
   background: #dde3ea;
@@ -91,7 +92,10 @@ button:disabled { background: #95a5a6; cursor: not-allowed; opacity: .7; }
 }
 
 /* ── Inhalt ── */
-main { flex: 1; padding: 12px 14px; }
+/* Auf sehr breiten Schirmen die Inhaltsbreite begrenzen und zentrieren
+   (Kopf/Tabs bleiben full-width). Breite Datentabellen scrollen bei Bedarf
+   weiterhin in ihrem eigenen Container. */
+main { flex: 1; padding: 12px 14px; max-width: 1500px; margin: 0 auto; width: 100%; }
 .tab-inhalt { display: none; }
 .tab-inhalt.aktiv { display: block; }
 
@@ -431,6 +435,33 @@ td.bm-geaendert { background: #fff3b0; }
   color: #6b5b00;
 }
 .bm-vorher s { opacity: .75; }
+
+/* ── Responsive: Handys / schmale Fenster ── */
+@media (max-width: 600px) {
+  main { padding: 8px; }
+  header { padding: 8px 10px; }
+  .tabs { padding: 8px 8px 0; }
+  .tab { padding: 8px 12px; }
+  .karte { padding: 10px; }
+
+  /* Formularzeilen stapeln: Label über dem Eingabefeld statt daneben */
+  .formzeile { flex-direction: column; align-items: stretch; gap: 4px; }
+  .formzeile label { min-width: 0; }
+
+  /* Größere Touch-Ziele (Fingerbedienung) */
+  button { padding: 10px 14px; font-size: 14px; min-height: 40px; }
+  .tab { min-height: 40px; }
+  .aktionszeile { gap: 6px; }
+  .aktionszeile input[type="search"] { min-width: 0; flex: 1 1 100%; }
+
+  /* iOS/Safari zoomt beim Fokus, wenn Felder < 16px sind → auf 16px setzen.
+     Muss die spezifischeren Basisregeln (Tabelle, Formzeile, Export) treffen. */
+  input, select, textarea,
+  .formzeile input[type="text"], .formzeile select,
+  .export-kopf input, .map-tabelle select, .filter-label select,
+  td input[type="text"], td input[type="number"], td select { font-size: 16px; }
+  td input[type="number"] { width: 5.5em; }
+}
 
 /* ── Druckbereich ── */
 #druckbereich { display: none; }
