@@ -58,7 +58,7 @@ function aktualisiereKopf() {
                     "btn-druck-gruppen", "btn-druck-einzeloption",
                     "btn-druck-einzelgruppe", "btn-aenderungen-uebersicht", "btn-raum-neu",
                     "btn-raum-loeschen", "btn-raum-auto", "btn-raum-reset",
-                    "btn-raum-druck", "btn-bearbeitungsmodus",
+                    "btn-raum-druck", "btn-raum-plan-export", "btn-bearbeitungsmodus",
                     "btn-raum-import", "btn-raum-export"]) {
     $(id).disabled = !offen;
   }

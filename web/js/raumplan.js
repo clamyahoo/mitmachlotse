@@ -290,21 +290,43 @@ async function autoZuteilen() {
   }
 }
 
-async function druckeRaumplan() {
+/** Raumzuordnung als eine Druck-/Export-Gruppe ({titel, headers, rows}).
+ *  Das Raumzuordnungs-Zusatzfeld erscheint als Spalte, wenn es benannt ist. */
+function raumplanGruppe() {
   const k = db.getFeldkonfig();
+  const rzl = (k.raumzuordnung_extra_label || "").trim();
   const plan = db.getRaumplan();
-  const gruppen = [{
+  const headers = ["Nr.", db.labelFormen(k.projekt_label).name, "Raum", "Zeit",
+                   "Plätze max", "belegt"];
+  if (rzl) headers.push(rzl);
+  const rows = plan.map((row) => {
+    const r = [row.nummer, row.projektname || "", row.raum_name || "—",
+               row.zeit || "", row.tnmax ?? "", row.belegt || 0];
+    if (rzl) r.push(row.raumzuordnung_extra || "");
+    return r;
+  });
+  return {
     titel: `Raumzuordnung (${plan.length} ${db.labelFormen(k.projekt_label).pluralNom})`,
-    headers: ["Nr.", db.labelFormen(k.projekt_label).name, "Raum", "Zeit",
-              "Plätze max", "belegt"],
-    rows: plan.map((row) => [
-      row.nummer, row.projektname || "", row.raum_name || "—",
-      row.zeit || "", row.tnmax ?? "", row.belegt || 0,
-    ]),
-  }];
-  const kept = await waehleSpalten(gruppen[0].headers);
+    headers, rows,
+  };
+}
+
+async function druckeRaumplan() {
+  const g = raumplanGruppe();
+  const kept = await waehleSpalten(g.headers);
   if (!kept) return;
-  druck.drucke("Raumplan", filterGruppen(gruppen, kept));
+  druck.drucke("Raumplan", filterGruppen([g], kept));
+}
+
+function exportiereRaumplan() {
+  const g = raumplanGruppe();
+  if (!g.rows.length) { alert("Keine Optionen vorhanden."); return; }
+  zeigeExportDialog({
+    titel: "Raumzuordnung",
+    dateiBasis: "raumzuordnung",
+    gruppen: [g],
+    status: cb.status,
+  });
 }
 
 /** Raumliste als CSV-Text — Spalten wie der Desktop-Export, damit die Datei
@@ -341,6 +363,7 @@ export function initRaumplan(callbacks) {
     cb.status(`Raumzuteilung aufgehoben (${n} Zuordnungen entfernt, fixierte bleiben).`);
   });
   $("btn-raum-druck").addEventListener("click", druckeRaumplan);
+  $("btn-raum-plan-export").addEventListener("click", exportiereRaumplan);
   $("btn-raum-export").addEventListener("click", () => {
     const raeume = db.getAlleRaeume();
     if (!raeume.length) { alert("Keine Räume vorhanden."); return; }
